@@ -1,0 +1,7 @@
+curl -X POST -H "Content-Type: application/json" "http://localhost:8983/solr/example/update?commit=true" --data-binary "@jawiki_articles_100.json"
+curl 'http://solr:8983/solr/example/select?indent=true&q.op=OR&q=*:*'
+
+solrj:java library
+
+fl：名前を絞る
+solrsolrj：検索方法を探ってから

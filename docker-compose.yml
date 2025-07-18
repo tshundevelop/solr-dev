@@ -1,0 +1,26 @@
+services:
+  solr:
+    image: solr:9.8
+    ports:
+     - "8983:8983"
+    volumes:
+      - data:/var/solr
+    command:
+      - solr-precreate
+      - example
+    container_name: solr
+  
+  java:
+    build:
+      context: .
+      dockerfile: ./java/Dockerfile
+    volumes:
+      - ./java:/app
+    container_name: java
+    tty: true
+    depends_on:
+      - solr
+
+volumes:
+  data:
+    name: "data"
