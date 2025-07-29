@@ -5,3 +5,7 @@ solrj:java library
 
 fl：名前を絞る
 solrsolrj：検索方法を探ってから
+
+githubのisuueにtodo
+todoをテンプレート化（問題、解決方法）
+タスク・不具合フローを左から右に、
