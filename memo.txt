@@ -1,5 +1,0 @@
-apt install maven
-mvn compile
-mvn package
-mvn clean compile exec:java
-mvn exec:java
