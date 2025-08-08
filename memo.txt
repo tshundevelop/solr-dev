@@ -1,11 +1,5 @@
-curl -X POST -H "Content-Type: application/json" "http://localhost:8983/solr/example/update?commit=true" --data-binary "@jawiki_articles_100.json"
-curl 'http://solr:8983/solr/example/select?indent=true&q.op=OR&q=*:*'
-
-solrj:java library
-
-fl：名前を絞る
-solrsolrj：検索方法を探ってから
-
-githubのisuueにtodo
-todoをテンプレート化（問題、解決方法）
-タスク・不具合フローを左から右に、
+apt install maven
+mvn compile
+mvn package
+mvn clean compile exec:java
+mvn exec:java
