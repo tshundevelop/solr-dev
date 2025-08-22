@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 
 # User-detemined files
 memo.txt
+*.py
+.vscode
+test_vector.json

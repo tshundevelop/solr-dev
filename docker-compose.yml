@@ -5,7 +5,7 @@ services:
      - "8983:8983"
     volumes:
       - data:/var/solr
-    command:
+    command: 
       - solr-precreate
       - example
     container_name: solr
@@ -14,8 +14,10 @@ services:
     build:
       context: .
       dockerfile: ./java/Dockerfile
-    # volumes:
-    #   - ./java:/app
+    volumes:
+      - type: bind
+        source: ./java
+        target: /app/java
     container_name: java
     tty: true
     depends_on:

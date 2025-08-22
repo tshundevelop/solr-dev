@@ -10,6 +10,3 @@ COPY . .
 WORKDIR /app/java
 
 RUN mvn compile
-# RUN mvn package
-
-CMD ["mvn", "exec:java"]
