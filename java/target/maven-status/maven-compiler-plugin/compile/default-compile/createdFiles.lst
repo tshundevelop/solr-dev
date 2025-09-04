@@ -1,2 +1,4 @@
 EmbedSearch.class
+EmbeddingClient$RequestPayload.class
 Sample.class
+EmbeddingClient.class

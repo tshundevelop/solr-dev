@@ -9,6 +9,8 @@ services:
       - solr-precreate
       - example
     container_name: solr
+    networks:
+      - my_network
   
   java:
     build:
@@ -22,6 +24,27 @@ services:
     tty: true
     depends_on:
       - solr
+      - python
+    networks:
+      - my_network
+
+  python:
+    build:
+      context: .
+      dockerfile: ./python/Dockerfile
+    ports:
+      - "5000:5000"
+    container_name: python
+    volumes:
+      - type: bind
+        source: ./python
+        target: /app/python
+    networks:
+      - my_network
+
+networks:
+  my_network:
+    driver: bridge
 
 volumes:
   data:

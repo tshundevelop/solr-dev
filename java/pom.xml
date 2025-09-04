@@ -15,15 +15,29 @@
             <artifactId>solr-solrj</artifactId>
             <version>8.11.2</version>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.15.2</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
+            <!-- <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.1</version>
+                <configuration>
+                    <mainClass>EmbeddingClient</mainClass>
+                </configuration>
+            </plugin> -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.1</version>
                 <configuration>
                     <mainClass>EmbedSearch</mainClass>
+                    <!-- <mainClass>EmbeddingClient</mainClass> -->
                     <!-- <mainClass>Sample</mainClass> -->
                 </configuration>
             </plugin>

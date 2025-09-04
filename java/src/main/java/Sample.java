@@ -7,11 +7,15 @@ import org.apache.solr.common.SolrDocumentList;
 
 public class Sample {
 	public static void main(String[] args) {
-		String solrUrl = "http://solr:8983/solr/example"; // docker-composeのsolrサービス名に合わせる
+		String keyword = "東大寺の仏像";
+		getKeywordSearchResult(keyword);
+	}
+
+	private static void getKeywordSearchResult(String keyword) {
+		String solrUrl = "http://solr:8983/solr/jaquad_dev_all"; // docker-composeのsolrサービス名に合わせる
 		try (SolrClient solr = new HttpSolrClient.Builder(solrUrl).build()) {
-			SolrQuery query = new SolrQuery("text:生物"); // クエリを設定
-			query.setFields("id"); // 取得するフィールドを指定
-			// query.setQuery("text:生物"); // すべてのドキュメントを検索
+			SolrQuery query = new SolrQuery("context:" + keyword); // クエリを設定
+			query.setFields("title"); // 取得するフィールドを指定
 			QueryResponse response = solr.query(query);
 			SolrDocumentList docs = response.getResults();
 			System.out.println("Found " + docs.getNumFound() + " documents");
