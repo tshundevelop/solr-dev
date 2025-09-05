@@ -14,10 +14,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 
-public class EmbedSearch {
-
+public class HybridSearch {
     public static void main(String[] args) {
-        // 引数があればそれを使う
         String keyword;
         try {
             keyword = args[0];
@@ -26,10 +24,10 @@ public class EmbedSearch {
             return;
         }
 
-        SolrDocumentList results = getEmbeddingSearchResult("JaQuAD_dev_all", keyword);
+        SolrDocumentList results = getHybrideSearchResult(keyword);
 
         try {
-            FileWriter file = new FileWriter("embeddding.txt");
+            FileWriter file = new FileWriter("hybrid.txt");
             BufferedWriter bw = new BufferedWriter(file);
             PrintWriter pw = new PrintWriter(bw);
             for (SolrDocument result : results) {
@@ -42,16 +40,17 @@ public class EmbedSearch {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        // System.out.println(results);
+
+        // for (SolrDocument result : results) {
+        //     System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
+        //     System.out.println("title: " + result.getFieldValue("title"));
+        // }
     }
 
-    private static SolrDocumentList getEmbeddingSearchResult(String coreName, String keyword) {
-        // Solr URL: Docker Composeのサービス名に合わせて調整
-        String solrUrl = "http://solr:8983/solr/" + coreName;
+    private static SolrDocumentList getHybrideSearchResult(String keyword) {
+        String solrUrl = "http://solr:8983/solr/JaQuAD_dev_all";
 
-        // SolrClientをtry-with-resourcesで初期化
         try (SolrClient solr = new HttpSolrClient.Builder(solrUrl).build()) {
-
             List<Double> embedding = EmbeddingClient.getEmbeddingFromPython(keyword);
             if (embedding != null) {
                 System.out.println("Embedding size: " + embedding.size());
@@ -66,14 +65,22 @@ public class EmbedSearch {
             }
 
             // float配列をJSON文字列に変換
-            String vectorString = floatArrayToJson(queryVector);
+            String vectorString = EmbedSearch.floatArrayToJson(queryVector);
 
             // SolrQueryではなくModifiableSolrParamsを使用し、パラメータを設定
             ModifiableSolrParams params = new ModifiableSolrParams();
 
             // 'text_vec' はSolrスキーマで定義したベクトルフィールド名に合わせる
+            String[] keywordList = keyword.split(" ");
+			if (keywordList.length > 1) {
+				keyword = String.join(" AND ", keywordList);
+			}
             params.set("q", "{!knn f=context_vec topK=20}" + vectorString);
-            params.set("fl", "id,score,title,context"); // 必要なフィールドを指定
+            params.set("sort", "exists(query(qq)) desc");
+            params.set("sort", "score desc");
+            // params.set("qq", "context:\"" + keyword + "\"");
+            params.set("qq", "context:" + keyword); // キーワード検索のクエリを設定
+            params.set("fl", "id,score,title,context");
 
             // QueryRequestオブジェクトを作成し、POSTメソッドを明示的に指定
             QueryRequest queryRequest = new QueryRequest(params);
@@ -86,27 +93,11 @@ public class EmbedSearch {
             // 結果を取得し、表示
             SolrDocumentList docs = response.getResults();
             System.out.println("Found " + docs.getNumFound() + " documents:");
-            // for (SolrDocument doc : docs) {
-            //     System.out.println("ID: " + doc.getFieldValue("id") + ", Score: " + doc.getFieldValue("score"));
-            //     System.out.println("title: " + doc.getFieldValue("title"));
-            // }
             return docs;
         } catch (Exception e) {
             System.err.println("Solrとの通信中にエラーが発生しました:");
             e.printStackTrace();
             return null;
         }
-    }
-
-    public static String floatArrayToJson(float[] array) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < array.length; i++) {
-            sb.append(array[i]);
-            if (i < array.length - 1) {
-                sb.append(", ");
-            }
-        }
-        sb.append("]");
-        return sb.toString();
     }
 }

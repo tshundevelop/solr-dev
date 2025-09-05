@@ -4,7 +4,7 @@ from embedder import TextEmbedder
 
 app = Flask(__name__)
 # モデルを事前にロードしておくことで、リクエストごとのオーバーヘッドを削減します
-model = TextEmbedder("intfloat/multilingual-e5-small")
+model = TextEmbedder("intfloat/multilingual-e5-large")
 
 @app.route('/embed', methods=['POST'])
 def get_embedding():

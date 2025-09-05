@@ -1,4 +1,7 @@
-EmbedSearch.class
 EmbeddingClient$RequestPayload.class
+EmbedSearch.class
+HybridSearchController.class
 Sample.class
+HybridSearch.class
+Application.class
 EmbeddingClient.class

@@ -20,25 +20,28 @@
             <artifactId>jackson-databind</artifactId>
             <version>2.15.2</version>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <version>2.7.18</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+            <version>2.7.18</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
-            <!-- <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.5.1</version>
-                <configuration>
-                    <mainClass>EmbeddingClient</mainClass>
-                </configuration>
-            </plugin> -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.1</version>
                 <configuration>
-                    <mainClass>EmbedSearch</mainClass>
-                    <!-- <mainClass>EmbeddingClient</mainClass> -->
+                    <!-- <mainClass>EmbedSearch</mainClass> -->
+                    <mainClass>HybridSearch</mainClass>
                     <!-- <mainClass>Sample</mainClass> -->
+                    <!-- <mainClass>Application</mainClass> -->
                 </configuration>
             </plugin>
         </plugins>
