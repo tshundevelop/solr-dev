@@ -26,23 +26,29 @@ public class EmbedSearch {
             return;
         }
 
+        keyword = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"});
+        System.out.println("Keyword after word split: " + keyword);
+
         SolrDocumentList results = getEmbeddingSearchResult("JaQuAD_dev_all", keyword);
 
-        try {
-            FileWriter file = new FileWriter("embeddding.txt");
-            BufferedWriter bw = new BufferedWriter(file);
-            PrintWriter pw = new PrintWriter(bw);
-            for (SolrDocument result : results) {
-                pw.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
-                pw.println("title: " + result.getFieldValue("title"));
-                pw.println("context: " + result.getFieldValue("context").toString().replace("\n\n", ""));
-                pw.println();
-            }
-            pw.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+        // try {
+        //     FileWriter file = new FileWriter("embeddding.txt");
+        //     BufferedWriter bw = new BufferedWriter(file);
+        //     PrintWriter pw = new PrintWriter(bw);
+        //     for (SolrDocument result : results) {
+        //         pw.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
+        //         pw.println("title: " + result.getFieldValue("title"));
+        //         pw.println("context: " + result.getFieldValue("context").toString().replace("\n\n", ""));
+        //         pw.println();
+        //     }
+        //     pw.close();
+        // } catch (IOException e) {
+        //     e.printStackTrace();
+        // }
+        for (SolrDocument result : results) {
+            System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
+            System.out.println("title: " + result.getFieldValue("title"));
         }
-        // System.out.println(results);
     }
 
     private static SolrDocumentList getEmbeddingSearchResult(String coreName, String keyword) {

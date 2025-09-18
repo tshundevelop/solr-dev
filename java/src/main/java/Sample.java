@@ -20,28 +20,34 @@ public class Sample {
         try {
             keyword = args[0];
         } catch (Exception e) {
-            System.out.println("No argument found. Using default keyword.");
+            System.out.println("No argument found. Escape process.");
             return;
         }
 
+        keyword = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"});
+        System.out.println("Keyword after word split: " + keyword);
+
 		SolrDocumentList results = getKeywordSearchResult("JaQuAD_dev_all", keyword, "id,title,context");
 
-		try {
-            FileWriter file = new FileWriter("keyword.txt");
-            BufferedWriter bw = new BufferedWriter(file);
-            PrintWriter pw = new PrintWriter(bw);
-            for (SolrDocument result : results) {
-                pw.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
-                pw.println("title: " + result.getFieldValue("title"));
-                pw.println("context: " + result.getFieldValue("context").toString().replace("\n\n", ""));
-                pw.println();
-            }
-            pw.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+		// try {
+        //     FileWriter file = new FileWriter("keyword.txt");
+        //     BufferedWriter bw = new BufferedWriter(file);
+        //     PrintWriter pw = new PrintWriter(bw);
+        //     for (SolrDocument result : results) {
+        //         pw.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
+        //         pw.println("title: " + result.getFieldValue("title"));
+        //         pw.println("context: " + result.getFieldValue("context").toString().replace("\n\n", ""));
+        //         pw.println();
+        //     }
+        //     pw.close();
+        // } catch (IOException e) {
+        //     e.printStackTrace();
+        // }
 
-		// System.out.println(result);
+		for (SolrDocument result : results) {
+            System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
+            System.out.println("title: " + result.getFieldValue("title"));
+        }
 	}
 
 	private static SolrDocumentList getKeywordSearchResult(String coreName, String keyword, String field) {
@@ -54,8 +60,9 @@ public class Sample {
             // 'text_vec' はSolrスキーマで定義したベクトルフィールド名に合わせる
 			String[] keywordList = keyword.split(" ");
 			if (keywordList.length > 1) {
-				keyword = String.join(" AND ", keywordList);
+				keyword = String.join("AND", keywordList);
 			}
+            System.out.println("Final keyword for Solr query: " + keyword);
             // params.set("q", "context:\"" + keyword + "\""); // フレーズ検索
 			params.set("q", "context:" + keyword); // 通常のキーワード検索
             params.set("fl", field); // 必要なフィールドを指定

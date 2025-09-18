@@ -1,7 +1,6 @@
-EmbeddingClient$RequestPayload.class
 EmbedSearch.class
-HybridSearchController.class
+EmbeddingClient$RequestPayload.class
+WordSplitter.class
 Sample.class
 HybridSearch.class
-Application.class
 EmbeddingClient.class
