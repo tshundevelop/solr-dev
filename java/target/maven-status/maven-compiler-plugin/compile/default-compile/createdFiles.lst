@@ -1,6 +1,10 @@
-EmbedSearch.class
+Config.class
 EmbeddingClient$RequestPayload.class
+Main.class
 WordSplitter.class
+EvaluationResult.class
+EmbedSearch.class
 Sample.class
 HybridSearch.class
 EmbeddingClient.class
+Evaluation.class

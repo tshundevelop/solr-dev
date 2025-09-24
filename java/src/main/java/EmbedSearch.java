@@ -31,27 +31,13 @@ public class EmbedSearch {
 
         SolrDocumentList results = getEmbeddingSearchResult("JaQuAD_dev_all", keyword);
 
-        // try {
-        //     FileWriter file = new FileWriter("embeddding.txt");
-        //     BufferedWriter bw = new BufferedWriter(file);
-        //     PrintWriter pw = new PrintWriter(bw);
-        //     for (SolrDocument result : results) {
-        //         pw.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
-        //         pw.println("title: " + result.getFieldValue("title"));
-        //         pw.println("context: " + result.getFieldValue("context").toString().replace("\n\n", ""));
-        //         pw.println();
-        //     }
-        //     pw.close();
-        // } catch (IOException e) {
-        //     e.printStackTrace();
-        // }
         for (SolrDocument result : results) {
             System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
             System.out.println("title: " + result.getFieldValue("title"));
         }
     }
 
-    private static SolrDocumentList getEmbeddingSearchResult(String coreName, String keyword) {
+    public static SolrDocumentList getEmbeddingSearchResult(String coreName, String keyword) {
         // Solr URL: Docker Composeのサービス名に合わせて調整
         String solrUrl = "http://solr:8983/solr/" + coreName;
 
@@ -59,10 +45,6 @@ public class EmbedSearch {
         try (SolrClient solr = new HttpSolrClient.Builder(solrUrl).build()) {
 
             List<Double> embedding = EmbeddingClient.getEmbeddingFromPython(keyword);
-            if (embedding != null) {
-                System.out.println("Embedding size: " + embedding.size());
-                // 必要に応じてembeddingを使った処理を記述
-            }
 
             double[] rawDoubleVector = embedding.stream().mapToDouble(Double::doubleValue).toArray();
             // double[] から float[] への変換とキャスト
@@ -78,7 +60,7 @@ public class EmbedSearch {
             ModifiableSolrParams params = new ModifiableSolrParams();
 
             // 'text_vec' はSolrスキーマで定義したベクトルフィールド名に合わせる
-            params.set("q", "{!knn f=context_vec topK=20}" + vectorString);
+            params.set("q", "{!knn f=context_vec topK=10}" + vectorString);
             params.set("fl", "id,score,title,context"); // 必要なフィールドを指定
 
             // QueryRequestオブジェクトを作成し、POSTメソッドを明示的に指定
@@ -91,11 +73,7 @@ public class EmbedSearch {
 
             // 結果を取得し、表示
             SolrDocumentList docs = response.getResults();
-            System.out.println("Found " + docs.getNumFound() + " documents:");
-            // for (SolrDocument doc : docs) {
-            //     System.out.println("ID: " + doc.getFieldValue("id") + ", Score: " + doc.getFieldValue("score"));
-            //     System.out.println("title: " + doc.getFieldValue("title"));
-            // }
+            
             return docs;
         } catch (Exception e) {
             System.err.println("Solrとの通信中にエラーが発生しました:");

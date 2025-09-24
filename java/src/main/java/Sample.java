@@ -12,6 +12,7 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
 
 public class Sample {
 	public static void main(String[] args) {
@@ -29,28 +30,13 @@ public class Sample {
 
 		SolrDocumentList results = getKeywordSearchResult("JaQuAD_dev_all", keyword, "id,title,context");
 
-		// try {
-        //     FileWriter file = new FileWriter("keyword.txt");
-        //     BufferedWriter bw = new BufferedWriter(file);
-        //     PrintWriter pw = new PrintWriter(bw);
-        //     for (SolrDocument result : results) {
-        //         pw.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
-        //         pw.println("title: " + result.getFieldValue("title"));
-        //         pw.println("context: " + result.getFieldValue("context").toString().replace("\n\n", ""));
-        //         pw.println();
-        //     }
-        //     pw.close();
-        // } catch (IOException e) {
-        //     e.printStackTrace();
-        // }
-
 		for (SolrDocument result : results) {
             System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
             System.out.println("title: " + result.getFieldValue("title"));
         }
 	}
 
-	private static SolrDocumentList getKeywordSearchResult(String coreName, String keyword, String field) {
+	public static SolrDocumentList getKeywordSearchResult(String coreName, String keyword, String field) {
 		String solrUrl = "http://solr:8983/solr/" + coreName; // docker-composeのsolrサービス名に合わせる
 		try (SolrClient solr = new HttpSolrClient.Builder(solrUrl).build()) {
 
@@ -58,31 +44,26 @@ public class Sample {
             ModifiableSolrParams params = new ModifiableSolrParams();
 
             // 'text_vec' はSolrスキーマで定義したベクトルフィールド名に合わせる
+            System.out.println("keyword: " + keyword);
 			String[] keywordList = keyword.split(" ");
 			if (keywordList.length > 1) {
 				keyword = String.join("AND", keywordList);
 			}
-            System.out.println("Final keyword for Solr query: " + keyword);
             // params.set("q", "context:\"" + keyword + "\""); // フレーズ検索
 			params.set("q", "context:" + keyword); // 通常のキーワード検索
             params.set("fl", field); // 必要なフィールドを指定
+            params.set("rows", 100); // 取得件数を指定
 
             // QueryRequestオブジェクトを作成し、POSTメソッドを明示的に指定
             QueryRequest queryRequest = new QueryRequest(params);
             queryRequest.setMethod(SolrRequest.METHOD.POST);
 
             // クエリを実行
-            // SolrClient.request()メソッドにQueryRequestオブジェクトを渡す
             QueryResponse response = queryRequest.process(solr);
 
-			// SolrQuery query = new SolrQuery("context:" + keyword); // クエリを設定
-			// query.setFields(field); // 取得するフィールドを指定
-			// QueryResponse response = solr.query(query);
 			SolrDocumentList docs = response.getResults();
-			System.out.println("Found " + docs.getNumFound() + " documents");
-			// for (SolrDocument doc : docs) {
-			// 	System.out.println(doc);
-			// }
+			// System.out.println("Found " + docs.getNumFound() + " documents");
+
 			return docs;
 		} catch (Exception e) {
 			e.printStackTrace();
