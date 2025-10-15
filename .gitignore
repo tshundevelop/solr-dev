@@ -492,3 +492,4 @@ data/
 java/Result/
 java/*.env
 tmp/
+java/cache/
