@@ -491,5 +491,4 @@ make_vector_json.py
 data/
 java/Result/
 java/*.env
-tmp/
 java/cache/
