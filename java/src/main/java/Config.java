@@ -2,15 +2,23 @@ public class Config {
     private String coreName;
     private String type;
     private int numRows;
+    private int topk;
+    private String keywordTargetField;
+    private String embeddingTargetField;
+    private String modelName;
     private String[] targetFields;
     private String[] partOfSpeech;
 
     public Config() {
         // デフォルト値の設定
         this.coreName = "JaQuAD_dev_all";
-        this.type = "embedding";
-        this.numRows = 10;
-        this.targetFields = new String[]{"id", "title", "context"};
+        this.type = "hybrid";
+        this.numRows = 10000;
+        this.topk = 10;
+        this.keywordTargetField = "context";
+        this.embeddingTargetField = "context_vec_from_openai";
+        this.modelName = "text-embedding-3-large";
+        this.targetFields = new String[]{"id", "title", "context", "score"};
         this.partOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
     }
 
@@ -23,6 +31,18 @@ public class Config {
     
     public int getNumRows() { return numRows; }
     public void setNumRows(int numRows) { this.numRows = numRows; }
+
+    public int getTopk() { return topk; }
+    public void setTopk(int topk) { this.topk = topk; }
+
+    public String getKeywordTargetField() { return keywordTargetField; }
+    public void setKeywordTargetField(String keywordTargetField) { this.keywordTargetField = keywordTargetField; }
+
+    public String getEmbeddingTargetField() { return embeddingTargetField; }
+    public void setEmbeddingTargetField(String embeddingTargetField) { this.embeddingTargetField = embeddingTargetField; }
+
+    public String getModelName() { return modelName; }
+    public void setModelName(String modelName) { this.modelName = modelName; }
     
     public String[] getTargetFields() { return targetFields; }
     public void setTargetFields(String[] targetFields) { this.targetFields = targetFields; }

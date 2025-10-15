@@ -4,19 +4,18 @@ import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import java.io.FileWriter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 
 public class Main {
     private static Config config;
+    private static final String PROPERTY_FILE = "api_key.env";
+    private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
     
     public static void main(String[] args) {
         config = new Config();
@@ -26,15 +25,19 @@ public class Main {
             String sourceCoreUrl = "http://solr:8983/solr/JaQuAD_dev_all";
             SolrClient sourceClient = new HttpSolrClient.Builder(sourceCoreUrl).build();
 
+            // 時間計測開始
+            long startTime = System.currentTimeMillis();
+
             // 全ドキュメント取得
             SolrQuery query = new SolrQuery("*:*");
-            query.setRows(10);
+            query.setRows(config.getNumRows());
             QueryResponse response = sourceClient.query(query);
             SolrDocumentList docs = response.getResults();
 
-            List<Map<String, Object>> evaluationResults = new ArrayList<>();
-            double totalScore = 0.0;
-            int totalDocs = 0;
+            List<LinkedHashMap<String, Object>> evaluationResults = new ArrayList<>();
+
+            DotEnvLoader.load(PROPERTY_FILE, API_KEY_ENV_VAR);
+            String apiKey = System.getProperty(API_KEY_ENV_VAR);
 
             // 各ドキュメントに対して処理
             for (SolrDocument doc : docs) {
@@ -45,63 +48,130 @@ public class Main {
                 String splittedQuestion = WordSplitter.getSplittedWords(question, new String[]{"名詞", "動詞", "形容詞"});
                 SolrDocumentList searchResults;
                 if (config.getType().equals("keyword")) {
-                    searchResults = Sample.getKeywordSearchResult("JaQuAD_dev_all", splittedQuestion, "id,title,context");
+                    searchResults = Keyword.getKeywordSearchResult(
+                        config.getCoreName(),
+                        splittedQuestion,
+                        String.join(",", config.getTargetFields()),
+                        config.getKeywordTargetField(),
+                        config.getTopk()
+                    );
                 } else if (config.getType().equals("embedding")) {
-                    searchResults = EmbedSearch.getEmbeddingSearchResult("JaQuAD_dev_all", splittedQuestion);
+                    searchResults = EmbedSearch.getEmbeddingSearchResult(
+                        config.getCoreName(),
+                        splittedQuestion,
+                        config.getEmbeddingTargetField(),
+                        apiKey,
+                        config.getTopk(),
+                        config.getModelName()
+                    );
+                } else if (config.getType().equals("hybrid")) {
+                    searchResults = HybridSearch.getHybrideSearchResult(
+                        config.getCoreName(),
+                        splittedQuestion,
+                        config.getEmbeddingTargetField(),
+                        apiKey,
+                        config.getTopk(),
+                        config.getModelName()
+                    );
                 } else {
                     System.out.println("Unknown evaluation type: " + config.getType());
                     return;
                 }
-                System.out.println("Found " + searchResults.getNumFound() + " documents:");
 
                 // Evaluation.javaで評価
                 EvaluationResult evalResult = Evaluation.evaluate(searchResults, question, docId);
 
                 // 結果を保存
-                Map<String, Object> result = new HashMap<>();
-                result.put("correctId", docId);
-                result.put("question", question);
-                result.put("splittedQuestion", splittedQuestion);
-                result.put("searchResults", searchResults);
-                result.put("numFound", searchResults.getNumFound());
-                result.put("score", evalResult.getScore());
-                evaluationResults.add(result);
+                LinkedHashMap<String, Object> resultMap = new LinkedHashMap<String, Object>() {{
+                    put("correctId", docId);
+                    put("question", question);
+                    put("splittedQuestion", splittedQuestion);
+                    put("numFound", searchResults.getNumFound());
+                    put("coverage", evalResult.getCoverage());
+                    put("mrr", evalResult.getMrr());
+                    put("lrap", evalResult.getLrap());
+                    put("averageMrrAndLrap", evalResult.getAverageMrrAndLrap());
+                    put("searchResults", searchResults);
+                }};
+                evaluationResults.add(resultMap);
 
-                totalScore += evalResult.getScore();
-                totalDocs++;
+                System.out.println("Processed documents: " + evaluationResults.size() + "/" + docs.size());
             }
+
+            // 時間計測終了
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
 
             // ディレクトリ作成
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             String dirPath = "Result/" + config.getType() + "/" + timestamp;
             new File(dirPath).mkdirs();
 
-            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            // Jackson ObjectMapperの初期化
+            ObjectMapper objectMapper = new ObjectMapper();
+
             // 結果のJSON保存
             String resultsPath = dirPath + "/results.json";
-            try (FileWriter writer = new FileWriter(resultsPath)) {
-                gson.toJson(evaluationResults, writer);
+            try {
+                objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(resultsPath), evaluationResults);
+            } catch (Exception e) {
+                System.err.println("Failed to save results.json: " + e.getMessage());
+                e.printStackTrace();
+            }
+
+            // 正誤状態IDのJSON保存
+            String statusPath = dirPath + "/status.json";
+            LinkedHashMap<String, List<String>> statusMap = new LinkedHashMap<String, List<String>>() {{
+                put("correct", new ArrayList<>());
+                put("incorrect", new ArrayList<>());
+            }};
+            for (LinkedHashMap<String, Object> evaluationResult : evaluationResults) {
+                String correctId = (String) evaluationResult.get("correctId");
+                double coverage = ((Number) evaluationResult.get("coverage")).doubleValue();
+
+                if (coverage == 1.0) {
+                    statusMap.get("correct").add(correctId);
+                } else {
+                    statusMap.get("incorrect").add(correctId);
+                }
+            }
+            try {
+                objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(statusPath), statusMap);
+            } catch (Exception e) {
+                System.err.println("Failed to save status.json: " + e.getMessage());
+                e.printStackTrace();
             }
 
             // サマリーの保存
-            String summaryPath = dirPath + "/summary.txt";
-            try (FileWriter writer = new FileWriter(summaryPath)) {
-                writer.write("=== Evaluation Summary ===\n");
-                writer.write("Date: " + timestamp + "\n");
-                writer.write("\n=== Configuration ===\n");
-                writer.write("Solr Core: " + config.getCoreName() + "\n");
-                writer.write("Evaluation Type: " + config.getType() + "\n");
-                writer.write("Number of Documents: " + config.getNumRows() + "\n");
-                writer.write("Target Fields: " + String.join(", ", config.getTargetFields()) + "\n");
-                writer.write("Part of Speech: " + String.join(", ", config.getPartOfSpeech()) + "\n");
-                writer.write("\n=== Results ===\n");
-                writer.write("Total Documents Processed: " + totalDocs + "\n");
-                writer.write("Average Score: " + String.format("%.4f", totalScore / totalDocs) + "\n");
+            String summaryPath = dirPath + "/summary.json";
+            LinkedHashMap<String, Object> configMap = new LinkedHashMap<String, Object>() {{
+                put("solrCore", config.getCoreName());
+                put("evaluationType", config.getType());
+                put("topk", config.getTopk());
+                put("numberOfDocuments", config.getNumRows());
+                put("mainTargetField", config.getKeywordTargetField());
+                put("targetFields", config.getTargetFields());
+                put("partOfSpeech", config.getPartOfSpeech());
+            }};
+            LinkedHashMap<String, Object> resultsMap = new LinkedHashMap<String, Object>() {{
+                put("totalDocumentsProcessed", evaluationResults.size());
+                put("averageCoverage", String.format("%.4f", Evaluation.getAverageCoverage()));
+                put("averageMrr", String.format("%.4f", Evaluation.getAverageMrr()));
+                put("averageLrap", String.format("%.4f", Evaluation.getAverageLrap()));
+                put("averageMrrAndLrap", String.format("%.4f", Evaluation.getAverageMrrAndLrap()));
+            }};
+            LinkedHashMap<String, Object> summaryMap = new LinkedHashMap<String, Object>() {{
+                put("data", timestamp);
+                put("durationMs", duration);
+                put("configuration", configMap);
+                put("results", resultsMap);
+            }};
+            try {
+                objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(summaryPath), summaryMap);
+            } catch (Exception e) {
+                System.err.println("Failed to save summary.json: " + e.getMessage());
+                e.printStackTrace();
             }
-
-            System.out.println("Results saved to: " + resultsPath);
-            System.out.println("Summary saved to: " + summaryPath);
-
         } catch (Exception e) {
             e.printStackTrace();
         }

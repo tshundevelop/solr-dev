@@ -1,9 +1,12 @@
 /app/java/src/main/java/EvaluationResult.java
+/app/java/src/main/java/OpenAIEmbeddingClient.java
 /app/java/src/main/java/Main.java
+/app/java/src/main/java/Keyword.java
 /app/java/src/main/java/HybridSearch.java
 /app/java/src/main/java/EmbeddingClient.java
 /app/java/src/main/java/EmbedSearch.java
 /app/java/src/main/java/Evaluation.java
+/app/java/src/main/java/Test.java
 /app/java/src/main/java/Config.java
 /app/java/src/main/java/WordSplitter.java
-/app/java/src/main/java/Sample.java
+/app/java/src/main/java/DotEnvLoader.java

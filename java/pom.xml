@@ -51,9 +51,11 @@
                 <configuration>
                     <!-- <mainClass>EmbedSearch</mainClass> -->
                     <!-- <mainClass>HybridSearch</mainClass> -->
-                    <!-- <mainClass>Sample</mainClass> -->
+                    <!-- <mainClass>Keyword</mainClass> -->
                     <!-- <mainClass>WordSplitter</mainClass> -->
                     <mainClass>Main</mainClass>
+                    <!-- <mainClass>OpenAIEmbeddingClient</mainClass> -->
+                    <!-- <mainClass>DotEnvLoader</mainClass> -->
                 </configuration>
             </plugin>
         </plugins>
