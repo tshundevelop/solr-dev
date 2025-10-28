@@ -8,11 +8,14 @@ public class Config {
     private String modelName;
     private String[] targetFields;
     private String[] partOfSpeech;
+    private int choiceWordNumFromTop;
+    private int paraphraseWordNumFromTop;
+    private String fieldSearchMethodType;
 
     public Config() {
         // デフォルト値の設定
         this.coreName = "JaQuAD_dev_all";
-        this.type = "hybrid";
+        this.type = "embedding";
         this.numRows = 10000;
         this.topk = 10;
         this.keywordTargetField = "context";
@@ -20,6 +23,9 @@ public class Config {
         this.modelName = "text-embedding-3-large";
         this.targetFields = new String[]{"id", "title", "context", "score"};
         this.partOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
+        this.choiceWordNumFromTop = 2;
+        this.paraphraseWordNumFromTop = 1;
+        this.fieldSearchMethodType = "AND";
     }
 
     // getter/setterメソッド    
@@ -49,4 +55,13 @@ public class Config {
     
     public String[] getPartOfSpeech() { return partOfSpeech; }
     public void setPartOfSpeech(String[] partOfSpeech) { this.partOfSpeech = partOfSpeech; }
+
+    public int getChoiceWordNumFromTop() { return choiceWordNumFromTop; }
+    public void setChoiceWordNumFromTop(int choiceWordNumFromTop) { this.choiceWordNumFromTop = choiceWordNumFromTop; }
+
+    public int getParaphraseWordNumFromTop() { return paraphraseWordNumFromTop; }
+    public void setParaphraseWordNumFromTop(int paraphraseWordNumFromTop) { this.paraphraseWordNumFromTop = paraphraseWordNumFromTop; }
+
+    public String getFieldSearchMethodType() { return fieldSearchMethodType; }
+    public void setFieldSearchMethodType(String fieldSearchMethodType) { this.fieldSearchMethodType = fieldSearchMethodType; }
 }

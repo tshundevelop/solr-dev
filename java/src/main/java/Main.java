@@ -45,20 +45,22 @@ public class Main {
                 String docId = (String) doc.getFirstValue("id");
 
                 // Sample.javaの検索メソッドを呼び出し
-                String splittedQuestion = WordSplitter.getSplittedWords(question, new String[]{"名詞", "動詞", "形容詞"});
+                String[] splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
+                String[] paraphraseQuestionList = OpenAIUseLLM.paraphraseTopN(splittedQuestionList, config.getParaphraseWordNumFromTop());
                 SolrDocumentList searchResults;
                 if (config.getType().equals("keyword")) {
                     searchResults = Keyword.getKeywordSearchResult(
                         config.getCoreName(),
-                        splittedQuestion,
+                        paraphraseQuestionList,
                         String.join(",", config.getTargetFields()),
                         config.getKeywordTargetField(),
-                        config.getTopk()
+                        config.getTopk(),
+                        config.getFieldSearchMethodType()
                     );
                 } else if (config.getType().equals("embedding")) {
                     searchResults = EmbedSearch.getEmbeddingSearchResult(
                         config.getCoreName(),
-                        splittedQuestion,
+                        paraphraseQuestionList,
                         config.getEmbeddingTargetField(),
                         apiKey,
                         config.getTopk(),
@@ -67,7 +69,7 @@ public class Main {
                 } else if (config.getType().equals("hybrid")) {
                     searchResults = HybridSearch.getHybrideSearchResult(
                         config.getCoreName(),
-                        splittedQuestion,
+                        paraphraseQuestionList,
                         config.getEmbeddingTargetField(),
                         apiKey,
                         config.getTopk(),
@@ -85,7 +87,8 @@ public class Main {
                 LinkedHashMap<String, Object> resultMap = new LinkedHashMap<String, Object>() {{
                     put("correctId", docId);
                     put("question", question);
-                    put("splittedQuestion", splittedQuestion);
+                    put("splittedQuestion", splittedQuestionList);
+                    put("paraphraseQuestion", paraphraseQuestionList);
                     put("numFound", searchResults.getNumFound());
                     put("coverage", evalResult.getCoverage());
                     put("mrr", evalResult.getMrr());
@@ -152,6 +155,9 @@ public class Main {
                 put("mainTargetField", config.getKeywordTargetField());
                 put("targetFields", config.getTargetFields());
                 put("partOfSpeech", config.getPartOfSpeech());
+                put("choiceWordNumFromTop", config.getChoiceWordNumFromTop());
+                put("paraphraseWordNumFromTop", config.getParaphraseWordNumFromTop());
+                put("fieldSearchMethodType", config.getFieldSearchMethodType());
             }};
             LinkedHashMap<String, Object> resultsMap = new LinkedHashMap<String, Object>() {{
                 put("totalDocumentsProcessed", evaluationResults.size());

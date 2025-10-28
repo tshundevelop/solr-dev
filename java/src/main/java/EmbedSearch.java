@@ -24,9 +24,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.Properties;
+import java.io.FileInputStream;
 
 public class EmbedSearch {
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
+    private static final String PROPERTY_FILE = "api_key.env";
     
     // 💡 キャッシュファイルのベースディレクトリのみを定義
     private static final String CACHE_BASE_DIR = "cache/";
@@ -52,8 +55,11 @@ public class EmbedSearch {
 
         String apiKey = "";
         try {
+            // 設定ファイルを読み取る処理
+			Properties property = new Properties();
+			property.load(new FileInputStream(PROPERTY_FILE));
             // ... (apiKey取得ロジックは変更なし。DotEnvLoaderが別途必要) ...
-            apiKey = System.getProperty(API_KEY_ENV_VAR);
+            apiKey = property.getProperty(API_KEY_ENV_VAR);
             if (apiKey == null) {
                 System.err.println("APIキーが見つかりません。DotEnvLoaderが実行されているか確認してください。");
                 apiKey = "DUMMY_API_KEY"; 
@@ -64,14 +70,14 @@ public class EmbedSearch {
         }
 
         // 💡 mainメソッドではキャッシュのロード/保存は行わない (getEmbeddingSearchResult内でモデルごとに処理)
-        
-        String processedKeyword = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"});
-        System.out.println("Keyword after word split: " + processedKeyword);
+
+        String[] keywordList = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"}, 2);
+        System.out.println("Keyword after word split: " + String.join(", ", keywordList));
 
         try {
             SolrDocumentList results = getEmbeddingSearchResult(
                 "JaQuAD_dev_all", 
-                processedKeyword, 
+                keywordList, 
                 "context_vec", 
                 apiKey, 
                 10, 
@@ -94,13 +100,14 @@ public class EmbedSearch {
 
     public static SolrDocumentList getEmbeddingSearchResult(
         String coreName,
-        String keyword,
+        String[] keywordList,
         String field,
         String apiKey,
         Integer topk,
         String modelName
     ) throws Exception {
         String solrUrl = "http://solr:8983/solr/" + coreName;
+        String keyword = String.join(" ", keywordList);
         float[] queryVector = getOrCreateEmbedding(keyword, field, apiKey, modelName);
 
         // --- Solr検索処理 ---

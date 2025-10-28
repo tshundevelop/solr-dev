@@ -39,13 +39,13 @@ public class HybridSearch {
             return;
         }
 
-        keyword = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"});
-        System.out.println("Keyword after word split: " + keyword);
+        String[] keywordList = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"}, 2);
+        System.out.println("Keyword after word split: " + String.join(", ", keywordList));
 
         try {
             SolrDocumentList results = getHybrideSearchResult(
                 "JaQuAD_dev_all",
-                keyword,
+                keywordList,
                 "context_vec_from_openai",
                 apiKey,
                 10,
@@ -64,7 +64,7 @@ public class HybridSearch {
 
     public static SolrDocumentList getHybrideSearchResult(
         String coreName,
-        String keyword,
+        String[] keywordList,
         String field,
         String apiKey,
         Integer topk,
@@ -74,6 +74,7 @@ public class HybridSearch {
 
         try (SolrClient solr = new HttpSolrClient.Builder(solrUrl).build()) {
             // --- 1. EmbedSearch の正式キャッシュロジックを利用して埋め込み取得 ---
+            String keyword = String.join(" ", keywordList);
             float[] queryVector = EmbedSearch.getOrCreateEmbedding(keyword, field, apiKey, modelName);
             String vectorString = EmbedSearch.floatArrayToJson(queryVector);
 

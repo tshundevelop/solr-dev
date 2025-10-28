@@ -49,13 +49,13 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.1</version>
                 <configuration>
+                    <!-- <mainClass>Keyword</mainClass> -->
                     <!-- <mainClass>EmbedSearch</mainClass> -->
                     <!-- <mainClass>HybridSearch</mainClass> -->
-                    <!-- <mainClass>Keyword</mainClass> -->
                     <!-- <mainClass>WordSplitter</mainClass> -->
                     <mainClass>Main</mainClass>
                     <!-- <mainClass>OpenAIEmbeddingClient</mainClass> -->
-                    <!-- <mainClass>DotEnvLoader</mainClass> -->
+                    <!-- <mainClass>OpenAIUseLLM</mainClass> -->
                 </configuration>
             </plugin>
         </plugins>
