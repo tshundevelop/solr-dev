@@ -20,6 +20,9 @@ services:
       - type: bind
         source: ./java
         target: /app/java
+      - type: bind
+        source: ./data
+        target: /app/data
     container_name: java
     tty: true
     depends_on:

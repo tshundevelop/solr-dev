@@ -50,7 +50,7 @@ public class EmbedSearch {
             keyword = args[0];
         } catch (Exception e) {
             System.out.println("No argument found. Using default keyword 'Solr vector search'.");
-            keyword = "Solr vector search";
+            keyword = "芥川賞を受賞した人は誰ですか。";
         }
 
         String apiKey = "";
@@ -78,11 +78,13 @@ public class EmbedSearch {
             SolrDocumentList results = getEmbeddingSearchResult(
                 "JaQuAD_dev_all", 
                 keywordList, 
-                "context_vec", 
+                "context_vec_from_openai", 
                 apiKey, 
                 10, 
                 EMBEDDING_MODEL // モデル名を渡す
             );
+
+            results = Main.sliceSolrDocumentList(results, 10);
 
             if (results != null) {
                 System.out.println("\n--- 検索結果 ---");
@@ -115,8 +117,9 @@ public class EmbedSearch {
             String vectorString = floatArrayToJson(queryVector);
 
             ModifiableSolrParams params = new ModifiableSolrParams();
-            params.set("q", String.format("{!knn f=%s topK=%s}", field, topk) + vectorString);
+            params.set("q", String.format("{!knn f=%s topK=10000}", field) + vectorString);
             params.set("fl", "id,score,title,context");
+            params.set("rows", 10000);
 
             QueryRequest queryRequest = new QueryRequest(params);
             queryRequest.setMethod(SolrRequest.METHOD.POST);

@@ -13,23 +13,29 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.Properties;
+import java.io.FileInputStream;
 
 public class HybridSearch {
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
     private static final String EMBEDDING_MODEL = "text-embedding-3-large"; // EmbedSearchと合わせる
+    private static final String PROPERTY_FILE = "api_key.env";
 
     public static void main(String[] args) {
         String keyword;
         try {
             keyword = args[0];
         } catch (Exception e) {
-            keyword = "第5回の芥川賞を受賞した人は誰ですか。";
+            keyword = "芥川賞を受賞した人は誰ですか。";
         }
 
         String apiKey = "";
         try {
+            // 設定ファイルを読み取る処理
+			Properties property = new Properties();
+			property.load(new FileInputStream(PROPERTY_FILE));
             // ... (apiKey取得ロジックは変更なし。DotEnvLoaderが別途必要) ...
-            apiKey = System.getProperty(API_KEY_ENV_VAR);
+            apiKey = property.getProperty(API_KEY_ENV_VAR);
             if (apiKey == null) {
                 System.err.println("APIキーが見つかりません。DotEnvLoaderが実行されているか確認してください。");
                 apiKey = "DUMMY_API_KEY"; 
@@ -51,6 +57,8 @@ public class HybridSearch {
                 10,
                 EMBEDDING_MODEL // EmbedSearchと合わせる
             );
+
+            results = Main.sliceSolrDocumentList(results, 10);
 
             for (SolrDocument result : results) {
                 System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
@@ -79,16 +87,33 @@ public class HybridSearch {
             String vectorString = EmbedSearch.floatArrayToJson(queryVector);
 
             // --- 2. キーワードqq構築 (Keyword.java のロジック参考) ---
-            String qq = buildKeywordQuery(keyword, "context");
+            String query = buildKeywordQuery(keyword, "context");
 
             // --- 3. ハイブリッドSolrクエリ実行 ---
             ModifiableSolrParams params = new ModifiableSolrParams();
-            params.set("q", String.format("{!knn f=%s topK=%d}", field, topk) + vectorString);
-            params.set("sort", "exists(query(qq)) desc");
-            params.set("sort", "score desc");
-            params.set("qq", qq);
+            // params.set("q", String.format("{!knn f=%s topK=%d}", field, topk) + vectorString);
+            // params.set("sort", "exists(query(qq)) desc");
+            // params.set("sort", "score desc");
+            // params.set("qq", query);
+            // params.set("fl", "id,score,title,context");
+
+            // params.set("q", query);
+            // params.set("defType", "edismax");
+            // params.set("qf", "context");
+            // params.set("bq", String.format("{!knn f=%s topK=10000}%s", field, vectorString));
+            // params.set("fl", "id,score,title,context");
+
+            // params.set("q", query);
+            // params.set("qf", "context");
+            // params.set("rq", "{!rerank reRankQuery=$rqq reRankDocs=10000 reRankWeight=1.0 reRankScale=0-1}");
+            // params.set("rqq", String.format("{!knn f=%s topK=10000}%s", field, vectorString));
+            // params.set("fl", "id,score,title,context");
+
+            params.set("q", String.format("{!knn f=%s topK=10000}%s", field, vectorString));
+            params.set("qf", "context_vec_from_openai");
+            params.set("rq", "{!rerank reRankQuery=$rqq reRankDocs=10000 reRankWeight=1.0 reRankScale=0-1}");
+            params.set("rqq", query);
             params.set("fl", "id,score,title,context");
-            // スコア融合のためのsortやcustom query parser利用が可能であればここで設定
 
             QueryRequest queryRequest = new QueryRequest(params);
             queryRequest.setMethod(SolrRequest.METHOD.POST);
@@ -119,6 +144,6 @@ public class HybridSearch {
         if (fieldQualified.isEmpty()) {
             return field + ":" + escaped; // フォールバック
         }
-        return String.join(" OR ", fieldQualified);
+        return String.join(" AND ", fieldQualified);
     }
 }

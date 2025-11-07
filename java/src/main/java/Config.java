@@ -9,8 +9,12 @@ public class Config {
     private String[] targetFields;
     private String[] partOfSpeech;
     private int choiceWordNumFromTop;
+    // 新規: 質問ごとの単語ランキングからチョイスする個数（>0 で有効化）
+    private int rankChoiceWordNumFromTop;
     private int paraphraseWordNumFromTop;
     private String fieldSearchMethodType;
+    // 結果保存時に searchType/結果フォルダ名/日時 で使う中間フォルダ名
+    private String resultFolderName;
 
     public Config() {
         // デフォルト値の設定
@@ -24,8 +28,10 @@ public class Config {
         this.targetFields = new String[]{"id", "title", "context", "score"};
         this.partOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
         this.choiceWordNumFromTop = 2;
+        this.rankChoiceWordNumFromTop = 3; // 0以下なら無効（従来の分かち書き使用）
         this.paraphraseWordNumFromTop = 1;
         this.fieldSearchMethodType = "AND";
+        this.resultFolderName = "baseline"; // デフォルトの結果フォルダ名
     }
 
     // getter/setterメソッド    
@@ -59,9 +65,15 @@ public class Config {
     public int getChoiceWordNumFromTop() { return choiceWordNumFromTop; }
     public void setChoiceWordNumFromTop(int choiceWordNumFromTop) { this.choiceWordNumFromTop = choiceWordNumFromTop; }
 
+    public int getRankChoiceWordNumFromTop() { return rankChoiceWordNumFromTop; }
+    public void setRankChoiceWordNumFromTop(int rankChoiceWordNumFromTop) { this.rankChoiceWordNumFromTop = rankChoiceWordNumFromTop; }
+
     public int getParaphraseWordNumFromTop() { return paraphraseWordNumFromTop; }
     public void setParaphraseWordNumFromTop(int paraphraseWordNumFromTop) { this.paraphraseWordNumFromTop = paraphraseWordNumFromTop; }
 
     public String getFieldSearchMethodType() { return fieldSearchMethodType; }
     public void setFieldSearchMethodType(String fieldSearchMethodType) { this.fieldSearchMethodType = fieldSearchMethodType; }
+
+    public String getResultFolderName() { return resultFolderName; }
+    public void setResultFolderName(String resultFolderName) { this.resultFolderName = resultFolderName; }
 }

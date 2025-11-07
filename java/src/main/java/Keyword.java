@@ -11,14 +11,15 @@ import java.util.List;
 import java.util.ArrayList;
 
 public class Keyword {
+    private static Config config = new Config();
 	public static void main(String[] args) {
 		// 引数があればそれを使う
         String keyword;
         try {
             keyword = args[0];
         } catch (Exception e) {
-            System.out.println("No argument found. Escape process.");
-            return;
+            System.out.println("No argument found. Using default keyword 'Solr vector search'.");
+            keyword = "芥川賞を受賞した人は誰ですか。";
         }
 
         String[] keywordList = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"}, 2);
@@ -31,6 +32,9 @@ public class Keyword {
             10,
             "AND"
         );
+
+        // 結果から上位K件を取得
+        results = Main.sliceSolrDocumentList(results, 10);
 
 		for (SolrDocument result : results) {
             System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
@@ -64,13 +68,15 @@ public class Keyword {
                 // 3. フィールド指定された単語を ' AND ' で結合
                 System.out.println("Field qualified keywords: " + String.join(", ", fieldQualifiedKeywords));
                 keyword = String.join(String.format(" %s ", fieldSearchMethodType), fieldQualifiedKeywords);
+            } else if (keywordList.length == 1) {
+                keyword = targetField + ":" + keywordList[0];
             }
             System.out.println("Final keyword for query: " + keyword);
 
             params.set("q.op", fieldSearchMethodType); // 検索方法の指定（AND/OR）
             params.set("q", keyword);
             params.set("fl", field); // 必要なフィールドを指定
-            params.set("rows", topk); // 取得件数を指定
+            params.set("rows", 10000); // 取得件数を指定
 
             // QueryRequestオブジェクトを作成し、POSTメソッドを明示的に指定
             QueryRequest queryRequest = new QueryRequest(params);

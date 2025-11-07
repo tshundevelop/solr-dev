@@ -56,6 +56,7 @@
                     <mainClass>Main</mainClass>
                     <!-- <mainClass>OpenAIEmbeddingClient</mainClass> -->
                     <!-- <mainClass>OpenAIUseLLM</mainClass> -->
+                    <!-- <mainClass>BuildQuestionWordSimilarity</mainClass> -->
                 </configuration>
             </plugin>
         </plugins>

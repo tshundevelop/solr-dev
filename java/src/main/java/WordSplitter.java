@@ -13,7 +13,7 @@ public class WordSplitter {
 	public static void main(String[] args) {
 		String text = "「奈良の大仏」の高さは何メートルなの?";
 		String[] partOfSpeechs = {"名詞", "動詞", "形容詞"};
-		int choiceWordNumFromTop = 2;
+		int choiceWordNumFromTop = 1000;
 		String[] words = getSplittedWords(text, partOfSpeechs, choiceWordNumFromTop);
 		System.out.println(Arrays.toString(words));
 	}
@@ -58,6 +58,43 @@ public class WordSplitter {
 		System.out.println("Split keyword list: " + String.join(", ", result));
 
 		return result.toArray(new String[0]);
+	}
+
+	/**
+	 * 品詞付きで返す版。返却要素は [cleanedWord, partOfSpeech]。
+	 */
+	public static List<String[]> getWordsWithPos(String text, String[] partOfSpeechs, int choiceWordNumFromTop) {
+		List<String[]> result = new ArrayList<>();
+		if (text == null || text.isEmpty() || choiceWordNumFromTop <= 0) return result;
+
+		List<String> removeWords = new ArrayList<String>(Arrays.asList("?"));
+
+		Builder builder = new Tokenizer.Builder();
+		Tokenizer tokenizer = null;
+		try {
+			tokenizer = builder.userDictionary("./userDic.csv").build();
+		} catch (IOException e) {
+			e.printStackTrace();
+			return result;
+		}
+
+		List<Token> tokens = tokenizer.tokenize(text);
+		List<String> posList = Arrays.asList(partOfSpeechs);
+
+		for (Token token : tokens) {
+			if (result.size() >= choiceWordNumFromTop) break;
+			String targetPos = token.getAllFeatures().split(",")[0];
+			String surface = token.getSurface();
+			if (!posList.contains(targetPos)) continue;
+			if (removeWords.contains(surface)) continue;
+
+			String cleaned = clean(surface);
+			if (!cleaned.isEmpty()) {
+				result.add(new String[]{cleaned, targetPos});
+			}
+		}
+
+		return result;
 	}
 
 	// 既存の呼び出し（文字列を期待）と互換性を保つヘルパー

@@ -16,6 +16,7 @@ public class Main {
     private static Config config;
     private static final String PROPERTY_FILE = "api_key.env";
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
+    private static final QuestionTokenRanking RANKING = new QuestionTokenRanking();
     
     public static void main(String[] args) {
         config = new Config();
@@ -44,8 +45,20 @@ public class Main {
                 String question = (String) doc.getFirstValue("question");
                 String docId = (String) doc.getFirstValue("id");
 
-                // Sample.javaの検索メソッドを呼び出し
-                String[] splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
+                // クエリトークンの決定: ランキング優先設定が有効ならランキングから取得、無効なら従来の分かち書き
+                String[] splittedQuestionList;
+                if (config.getRankChoiceWordNumFromTop() > 0) {
+                    int n = config.getRankChoiceWordNumFromTop();
+                    List<String> topTokens = RANKING.getTopTokens(question, n, config.getPartOfSpeech());
+                    if (topTokens == null || topTokens.isEmpty()) {
+                        // フォールバック: 従来の分かち書き
+                        splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
+                    } else {
+                        splittedQuestionList = topTokens.toArray(new String[0]);
+                    }
+                } else {
+                    splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
+                }
                 String[] paraphraseQuestionList = OpenAIUseLLM.paraphraseTopN(splittedQuestionList, config.getParaphraseWordNumFromTop());
                 SolrDocumentList searchResults;
                 if (config.getType().equals("keyword")) {
@@ -80,8 +93,11 @@ public class Main {
                     return;
                 }
 
+                // 結果から上位K件を取得
+                SolrDocumentList slicedSearchResults = Main.sliceSolrDocumentList(searchResults, config.getTopk());
+
                 // Evaluation.javaで評価
-                EvaluationResult evalResult = Evaluation.evaluate(searchResults, question, docId);
+                EvaluationResult evalResult = Evaluation.evaluate(slicedSearchResults, question, docId);
 
                 // 結果を保存
                 LinkedHashMap<String, Object> resultMap = new LinkedHashMap<String, Object>() {{
@@ -89,12 +105,12 @@ public class Main {
                     put("question", question);
                     put("splittedQuestion", splittedQuestionList);
                     put("paraphraseQuestion", paraphraseQuestionList);
-                    put("numFound", searchResults.getNumFound());
+                    put("numFound", slicedSearchResults.getNumFound());
                     put("coverage", evalResult.getCoverage());
                     put("mrr", evalResult.getMrr());
                     put("lrap", evalResult.getLrap());
                     put("averageMrrAndLrap", evalResult.getAverageMrrAndLrap());
-                    put("searchResults", searchResults);
+                    put("searchResults", slicedSearchResults);
                 }};
                 evaluationResults.add(resultMap);
 
@@ -107,7 +123,7 @@ public class Main {
 
             // ディレクトリ作成
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-            String dirPath = "Result/" + config.getType() + "/" + timestamp;
+            String dirPath = "Result/" + config.getType() + "/" + config.getResultFolderName() + "/" + timestamp;
             new File(dirPath).mkdirs();
 
             // Jackson ObjectMapperの初期化
@@ -156,8 +172,10 @@ public class Main {
                 put("targetFields", config.getTargetFields());
                 put("partOfSpeech", config.getPartOfSpeech());
                 put("choiceWordNumFromTop", config.getChoiceWordNumFromTop());
+                put("rankChoiceWordNumFromTop", config.getRankChoiceWordNumFromTop());
                 put("paraphraseWordNumFromTop", config.getParaphraseWordNumFromTop());
                 put("fieldSearchMethodType", config.getFieldSearchMethodType());
+                put("resultFolderName", config.getResultFolderName());
             }};
             LinkedHashMap<String, Object> resultsMap = new LinkedHashMap<String, Object>() {{
                 put("totalDocumentsProcessed", evaluationResults.size());
@@ -181,5 +199,15 @@ public class Main {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public static SolrDocumentList sliceSolrDocumentList(SolrDocumentList docs, int topk) {
+        SolrDocumentList slicedList = new SolrDocumentList();
+        slicedList.setNumFound(Math.min(docs.getNumFound(), topk));
+        slicedList.setStart(docs.getStart());
+        for (int i = 0; i < Math.min(topk, docs.size()); i++) {
+            slicedList.add(docs.get(i));
+        }
+        return slicedList;
     }
 }
