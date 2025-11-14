@@ -19,7 +19,7 @@ public class Config {
     public Config() {
         // デフォルト値の設定
         this.coreName = "JaQuAD_dev_all";
-        this.type = "embedding";
+        this.type = "keyword";
         this.numRows = 10000;
         this.topk = 10;
         this.keywordTargetField = "context";
@@ -29,8 +29,8 @@ public class Config {
         this.partOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
         this.choiceWordNumFromTop = 2;
         this.rankChoiceWordNumFromTop = 3; // 0以下なら無効（従来の分かち書き使用）
-        this.paraphraseWordNumFromTop = 1;
-        this.fieldSearchMethodType = "AND";
+        this.paraphraseWordNumFromTop = 2;
+        this.fieldSearchMethodType = "OR";
         this.resultFolderName = "baseline"; // デフォルトの結果フォルダ名
     }
 

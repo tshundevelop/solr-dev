@@ -44,6 +44,7 @@ public class Main {
             for (SolrDocument doc : docs) {
                 String question = (String) doc.getFirstValue("question");
                 String docId = (String) doc.getFirstValue("id");
+                String title = (String) doc.getFirstValue("title");
 
                 // クエリトークンの決定: ランキング優先設定が有効ならランキングから取得、無効なら従来の分かち書き
                 String[] splittedQuestionList;
@@ -102,6 +103,7 @@ public class Main {
                 // 結果を保存
                 LinkedHashMap<String, Object> resultMap = new LinkedHashMap<String, Object>() {{
                     put("correctId", docId);
+                    put("title", title);
                     put("question", question);
                     put("splittedQuestion", splittedQuestionList);
                     put("paraphraseQuestion", paraphraseQuestionList);

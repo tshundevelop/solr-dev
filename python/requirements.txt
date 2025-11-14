@@ -1,2 +1,4 @@
 Flask
 sentence-transformers
+streamlit
+pandas
