@@ -492,3 +492,5 @@ data/
 java/Result/
 java/*.env
 java/cache/
+todo
+*.py

@@ -53,10 +53,11 @@
                     <!-- <mainClass>EmbedSearch</mainClass> -->
                     <!-- <mainClass>HybridSearch</mainClass> -->
                     <!-- <mainClass>WordSplitter</mainClass> -->
-                    <mainClass>Main</mainClass>
+                    <!-- <mainClass>Main</mainClass> -->
                     <!-- <mainClass>OpenAIEmbeddingClient</mainClass> -->
                     <!-- <mainClass>OpenAIUseLLM</mainClass> -->
                     <!-- <mainClass>BuildQuestionWordSimilarity</mainClass> -->
+                    <mainClass>JaQuADToSolr</mainClass>
                 </configuration>
             </plugin>
         </plugins>
