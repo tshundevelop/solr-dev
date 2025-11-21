@@ -1,24 +1,17 @@
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.client.solrj.SolrRequest; // SolrRequestをインポート
-import org.apache.solr.client.solrj.request.QueryRequest; // QueryRequestをインポート
+import org.apache.solr.client.solrj.SolrRequest;
+import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.params.ModifiableSolrParams; // ModifiableSolrParamsをインポート
-
-import org.apache.solr.client.solrj.util.ClientUtils;
-import java.util.Arrays;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import java.util.Properties;
 import java.io.FileInputStream;
 
 public class HybridSearch {
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
-    private static final String EMBEDDING_MODEL = "text-embedding-3-large"; // EmbedSearchと合わせる
+    private static final String EMBEDDING_MODEL = "text-embedding-3-large";
     private static final String PROPERTY_FILE = "api_key.env";
 
     public static void main(String[] args) {
@@ -31,13 +24,11 @@ public class HybridSearch {
 
         String apiKey = "";
         try {
-            // 設定ファイルを読み取る処理
-			Properties property = new Properties();
-			property.load(new FileInputStream(PROPERTY_FILE));
-            // ... (apiKey取得ロジックは変更なし。DotEnvLoaderが別途必要) ...
+            Properties property = new Properties();
+            property.load(new FileInputStream(PROPERTY_FILE));
             apiKey = property.getProperty(API_KEY_ENV_VAR);
             if (apiKey == null) {
-                System.err.println("APIキーが見つかりません。DotEnvLoaderが実行されているか確認してください。");
+                System.err.println("APIキーが見つかりません。");
                 apiKey = "DUMMY_API_KEY"; 
             }
         } catch (Exception e) {
@@ -49,20 +40,48 @@ public class HybridSearch {
         System.out.println("Keyword after word split: " + String.join(", ", keywordList));
 
         try {
-            SolrDocumentList results = getHybrideSearchResult(
-                "JaQuAD_dev_all",
+            // is_chunk = false のドキュメントを検索
+            Object[] resultsNonChunkObj = getHybridSearchResultWithChunkFilter(
+                "validation2000",
                 keywordList,
-                "context_vec_from_openai",
+                "context_vector",
+                "context",
+                "AND",
                 apiKey,
-                10,
-                EMBEDDING_MODEL // EmbedSearchと合わせる
+                EMBEDDING_MODEL,
+                false
             );
 
-            results = Main.sliceSolrDocumentList(results, 10);
+            System.out.println("\n=== Results for is_chunk=false ===");
+            SolrDocumentList resultsNonChunk = (SolrDocumentList) resultsNonChunkObj[0];
+            resultsNonChunk = Main.sliceSolrDocumentList(resultsNonChunk, 10);
+            if (resultsNonChunk != null) {
+                for (SolrDocument result : resultsNonChunk) {
+                    System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
+                    System.out.println("title: " + result.getFieldValue("title"));
+                }
+            }
 
-            for (SolrDocument result : results) {
-                System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
-                System.out.println("title: " + result.getFieldValue("title"));
+            // is_chunk = true のドキュメントを検索
+            Object[] resultsChunkObj = getHybridSearchResultWithChunkFilter(
+                "validation2000",
+                keywordList,
+                "chunk_vector",
+                "context",
+                "AND",
+                apiKey,
+                EMBEDDING_MODEL,
+                true
+            );
+
+            System.out.println("\n=== Results for is_chunk=true ===");
+            SolrDocumentList resultsChunk = (SolrDocumentList) resultsChunkObj[0];
+            resultsChunk = Main.sliceSolrDocumentList(resultsChunk, 10);
+            if (resultsChunk != null) {
+                for (SolrDocument result : resultsChunk) {
+                    System.out.println("Chunk ID: " + result.getFieldValue("id") + ", Original Doc ID: " + result.getFieldValue("original_doc_id") + ", Score: " + result.getFieldValue("score"));
+                    System.out.println("title: " + result.getFieldValue("title"));
+                }
             }
         } catch (Exception e) {
             System.err.println("ハイブリッド検索中にエラー: " + e.getMessage());
@@ -70,80 +89,60 @@ public class HybridSearch {
         }
     }
 
-    public static SolrDocumentList getHybrideSearchResult(
+    /**
+     * is_chunkフィールドでフィルタリングしてハイブリッド検索を実行
+     * 
+     * @param coreName Solrコア名
+     * @param keywordList 検索キーワードリスト
+     * @param field ベクトルフィールド名
+     * @param targetField 検索対象フィールド名
+     * @param fieldSearchMethodType フィールド検索メソッドタイプ
+     * @param apiKey OpenAI APIキー
+     * @param modelName モデル名
+     * @param isChunk is_chunkフィルタ値（true/false）
+     * @return 検索結果
+     */
+    public static Object[] getHybridSearchResultWithChunkFilter(
         String coreName,
         String[] keywordList,
         String field,
+        String targetField,
+        String fieldSearchMethodType,
         String apiKey,
-        Integer topk,
-        String modelName
+        String modelName,
+        boolean isChunk
     ) throws Exception {
         String solrUrl = "http://solr:8983/solr/" + coreName;
 
         try (SolrClient solr = new HttpSolrClient.Builder(solrUrl).build()) {
-            // --- 1. EmbedSearch の正式キャッシュロジックを利用して埋め込み取得 ---
+            // 埋め込みベクトル取得
             String keyword = String.join(" ", keywordList);
             float[] queryVector = EmbedSearch.getOrCreateEmbedding(keyword, field, apiKey, modelName);
             String vectorString = EmbedSearch.floatArrayToJson(queryVector);
 
-            // --- 2. キーワードqq構築 (Keyword.java のロジック参考) ---
-            String query = buildKeywordQuery(keyword, "context");
+            // is_chunkフィルタを追加
+            String filterQuery = "is_chunk:" + isChunk;
 
-            // --- 3. ハイブリッドSolrクエリ実行 ---
+            // ハイブリッドSolrクエリ実行
             ModifiableSolrParams params = new ModifiableSolrParams();
-            // params.set("q", String.format("{!knn f=%s topK=%d}", field, topk) + vectorString);
-            // params.set("sort", "exists(query(qq)) desc");
-            // params.set("sort", "score desc");
-            // params.set("qq", query);
-            // params.set("fl", "id,score,title,context");
-
-            // params.set("q", query);
-            // params.set("defType", "edismax");
-            // params.set("qf", "context");
-            // params.set("bq", String.format("{!knn f=%s topK=10000}%s", field, vectorString));
-            // params.set("fl", "id,score,title,context");
-
-            // params.set("q", query);
-            // params.set("qf", "context");
-            // params.set("rq", "{!rerank reRankQuery=$rqq reRankDocs=10000 reRankWeight=1.0 reRankScale=0-1}");
-            // params.set("rqq", String.format("{!knn f=%s topK=10000}%s", field, vectorString));
-            // params.set("fl", "id,score,title,context");
-
+            params.set("q.op", fieldSearchMethodType);
             params.set("q", String.format("{!knn f=%s topK=10000}%s", field, vectorString));
-            params.set("qf", "context_vec_from_openai");
+            params.set("qf", field);
             params.set("rq", "{!rerank reRankQuery=$rqq reRankDocs=10000 reRankWeight=1.0 reRankScale=0-1}");
-            params.set("rqq", query);
-            params.set("fl", "id,score,title,context");
+            params.set("rqq", targetField + ":" + String.join(",", keywordList));
+            params.set("fq", filterQuery); // フィルタクエリでis_chunkを指定
+            params.set("fl", "id,original_doc_id,score,title,context");
 
             QueryRequest queryRequest = new QueryRequest(params);
             queryRequest.setMethod(SolrRequest.METHOD.POST);
             QueryResponse response = queryRequest.process(solr);
-            return response.getResults();
+            SolrDocumentList docs = response.getResults();
+            
+            return new Object[]{docs, params};
         } catch (Exception e) {
             System.err.println("ハイブリッド検索中にエラー: " + e.getMessage());
             e.printStackTrace();
             return null;
         }
-    }
-
-    private static String buildKeywordQuery(String keyword, String field) {
-        // 形態素後のキーワードは既にスペース区切り想定
-        String escaped = ClientUtils.escapeQueryChars(keyword);
-        List<String> escapeChars = Arrays.asList("『", "』", "\\\\", "?』", "?(", "-", "", "/", "~", "!", "@", "#", "$", "%", "^", "&", "*", "+", "=", "|", "\\", ":", ";", "\"", "'", "<", ">", ",", ".", "?", "`", "!』", "(", ")", "「", ")(", ")") ;
-        for (String c : escapeChars) {
-            if (!c.isEmpty()) {
-                escaped = escaped.replace(c, "");
-            }
-        }
-        String[] parts = escaped.split(" ");
-        List<String> fieldQualified = new ArrayList<>();
-        for (String p : parts) {
-            // if (p.isBlank()) continue;
-            fieldQualified.add(field + ":" + p);
-        }
-        if (fieldQualified.isEmpty()) {
-            return field + ":" + escaped; // フォールバック
-        }
-        return String.join(" AND ", fieldQualified);
     }
 }

@@ -22,15 +22,21 @@ public class Main {
         config = new Config();
 
         try {
+            // QuestionTokenRankingの初期化（ランキング機能を使用する場合のみ）
+            if (config.getRankChoiceWordNumFromTop() > 0) {
+                System.out.println("ランキング機能が有効です。データを読み込んでいます...");
+                RANKING.ensureLoadedOnce();
+            }
+            
             // Solrの設定
-            String sourceCoreUrl = "http://solr:8983/solr/JaQuAD_dev_all";
+            String sourceCoreUrl = "http://solr:8983/solr/" + config.getCoreName();
             SolrClient sourceClient = new HttpSolrClient.Builder(sourceCoreUrl).build();
 
             // 時間計測開始
             long startTime = System.currentTimeMillis();
 
-            // 全ドキュメント取得
-            SolrQuery query = new SolrQuery("*:*");
+            // questionフィールドが存在するドキュメントのみ取得
+            SolrQuery query = new SolrQuery("question:* AND is_chunk:false");
             query.setRows(config.getNumRows());
             QueryResponse response = sourceClient.query(query);
             SolrDocumentList docs = response.getResults();
@@ -43,7 +49,7 @@ public class Main {
             // 各ドキュメントに対して処理
             for (SolrDocument doc : docs) {
                 String question = (String) doc.getFirstValue("question");
-                String docId = (String) doc.getFirstValue("id");
+                String docId = (String) doc.getFirstValue("original_doc_id");
                 String title = (String) doc.getFirstValue("title");
 
                 // クエリトークンの決定: ランキング優先設定が有効ならランキングから取得、無効なら従来の分かち書き
@@ -53,8 +59,10 @@ public class Main {
                     List<String> topTokens = RANKING.getTopTokens(question, n, config.getPartOfSpeech());
                     if (topTokens == null || topTokens.isEmpty()) {
                         // フォールバック: 従来の分かち書き
+                        System.out.println("警告: 質問 \"" + question + "\" のランキングデータが見つかりません。従来の分かち書きを使用します。");
                         splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
                     } else {
+                        System.out.println("ランキングから上位" + topTokens.size() + "トークンを取得: " + String.join(", ", topTokens));
                         splittedQuestionList = topTokens.toArray(new String[0]);
                     }
                 } else {
@@ -62,33 +70,44 @@ public class Main {
                 }
                 String[] paraphraseQuestionList = OpenAIUseLLM.paraphraseTopN(splittedQuestionList, config.getParaphraseWordNumFromTop());
                 SolrDocumentList searchResults;
+                String searchParams;  // final変数として宣言
                 if (config.getType().equals("keyword")) {
-                    searchResults = Keyword.getKeywordSearchResult(
+                    Object[] resultObj = KeywordSearch.getKeywordSearchResultWithChunkFilter(
                         config.getCoreName(),
                         paraphraseQuestionList,
                         String.join(",", config.getTargetFields()),
                         config.getKeywordTargetField(),
-                        config.getTopk(),
-                        config.getFieldSearchMethodType()
+                        config.getFieldSearchMethodType(),
+                        config.isChunk()
                     );
+                    searchResults = (SolrDocumentList) resultObj[0];
+                    searchParams = resultObj[1].toString();
                 } else if (config.getType().equals("embedding")) {
-                    searchResults = EmbedSearch.getEmbeddingSearchResult(
+                    System.out.println(config.getEmbeddingTargetField());
+                    Object[] resultObj = EmbedSearch.getEmbeddingSearchResultWithChunkFilter(
                         config.getCoreName(),
                         paraphraseQuestionList,
                         config.getEmbeddingTargetField(),
+                        String.join(",", config.getTargetFields()),
                         apiKey,
-                        config.getTopk(),
-                        config.getModelName()
+                        config.getModelName(),
+                        config.isChunk()
                     );
+                    searchResults = (SolrDocumentList) resultObj[0];
+                    searchParams = resultObj[1].toString();
                 } else if (config.getType().equals("hybrid")) {
-                    searchResults = HybridSearch.getHybrideSearchResult(
+                    Object[] resultObj = HybridSearch.getHybridSearchResultWithChunkFilter(
                         config.getCoreName(),
                         paraphraseQuestionList,
                         config.getEmbeddingTargetField(),
+                        config.getKeywordTargetField(),
+                        config.getFieldSearchMethodType(),
                         apiKey,
-                        config.getTopk(),
-                        config.getModelName()
+                        config.getModelName(),
+                        config.isChunk()
                     );
+                    searchResults = (SolrDocumentList) resultObj[0];
+                    searchParams = resultObj[1].toString();
                 } else {
                     System.out.println("Unknown evaluation type: " + config.getType());
                     return;
@@ -105,13 +124,12 @@ public class Main {
                     put("correctId", docId);
                     put("title", title);
                     put("question", question);
+                    put("params", searchParams);
                     put("splittedQuestion", splittedQuestionList);
                     put("paraphraseQuestion", paraphraseQuestionList);
                     put("numFound", slicedSearchResults.getNumFound());
                     put("coverage", evalResult.getCoverage());
                     put("mrr", evalResult.getMrr());
-                    put("lrap", evalResult.getLrap());
-                    put("averageMrrAndLrap", evalResult.getAverageMrrAndLrap());
                     put("searchResults", slicedSearchResults);
                 }};
                 evaluationResults.add(resultMap);
@@ -177,14 +195,13 @@ public class Main {
                 put("rankChoiceWordNumFromTop", config.getRankChoiceWordNumFromTop());
                 put("paraphraseWordNumFromTop", config.getParaphraseWordNumFromTop());
                 put("fieldSearchMethodType", config.getFieldSearchMethodType());
+                put("isChunk", config.isChunk());
                 put("resultFolderName", config.getResultFolderName());
             }};
             LinkedHashMap<String, Object> resultsMap = new LinkedHashMap<String, Object>() {{
                 put("totalDocumentsProcessed", evaluationResults.size());
                 put("averageCoverage", String.format("%.4f", Evaluation.getAverageCoverage()));
                 put("averageMrr", String.format("%.4f", Evaluation.getAverageMrr()));
-                put("averageLrap", String.format("%.4f", Evaluation.getAverageLrap()));
-                put("averageMrrAndLrap", String.format("%.4f", Evaluation.getAverageMrrAndLrap()));
             }};
             LinkedHashMap<String, Object> summaryMap = new LinkedHashMap<String, Object>() {{
                 put("data", timestamp);

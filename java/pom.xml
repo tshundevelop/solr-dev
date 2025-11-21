@@ -49,15 +49,15 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.1</version>
                 <configuration>
-                    <!-- <mainClass>Keyword</mainClass> -->
+                    <!-- <mainClass>KeywordSearch</mainClass> -->
                     <!-- <mainClass>EmbedSearch</mainClass> -->
                     <!-- <mainClass>HybridSearch</mainClass> -->
                     <!-- <mainClass>WordSplitter</mainClass> -->
-                    <!-- <mainClass>Main</mainClass> -->
+                    <mainClass>Main</mainClass>
                     <!-- <mainClass>OpenAIEmbeddingClient</mainClass> -->
                     <!-- <mainClass>OpenAIUseLLM</mainClass> -->
                     <!-- <mainClass>BuildQuestionWordSimilarity</mainClass> -->
-                    <mainClass>JaQuADToSolr</mainClass>
+                    <!-- <mainClass>JaQuADToSolr</mainClass> -->
                 </configuration>
             </plugin>
         </plugins>

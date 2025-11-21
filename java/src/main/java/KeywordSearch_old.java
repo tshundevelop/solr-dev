@@ -10,7 +10,7 @@ import org.apache.solr.common.params.ModifiableSolrParams; // ModifiableSolrPara
 import java.util.List;
 import java.util.ArrayList;
 
-public class Keyword {
+public class KeywordSearch_old {
     private static Config config = new Config();
 	public static void main(String[] args) {
 		// 引数があればそれを使う
@@ -29,12 +29,11 @@ public class Keyword {
             keywordList,
             "id,title,context,score",
             "context",
-            10,
             "AND"
         );
 
         // 結果から上位K件を取得
-        results = Main.sliceSolrDocumentList(results, 10);
+        results = Main.sliceSolrDocumentList(results, config.getTopk());
 
 		for (SolrDocument result : results) {
             System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
@@ -47,7 +46,6 @@ public class Keyword {
         String[] keywordList,
         String field,
         String targetField,
-        Integer topk,
         String fieldSearchMethodType
     ) {
 		String solrUrl = "http://solr:8983/solr/" + coreName; // docker-composeのsolrサービス名に合わせる

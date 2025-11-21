@@ -14,7 +14,7 @@ import java.util.*;
  *  - ./JaQuAD_dev_all_word_sim.json
  */
 public class QuestionTokenRanking {
-    private static final String FILE_NAME = "JaQuAD_dev_all_word_sim.json";
+    private static final String FILE_NAME = "jaquad_merged_word_sim.json";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // question -> List<TokenInfo>
@@ -32,16 +32,20 @@ public class QuestionTokenRanking {
     public synchronized void ensureLoadedOnce() {
         if (loaded || loadTried) return;
         loadTried = true;
+        System.out.println("[QuestionTokenRanking] データファイルを探しています: " + FILE_NAME);
         try {
             File f = resolveExistingFile(new String[]{"data", "../data", "/app/data", "."}, FILE_NAME);
             if (f == null) {
-                System.err.println("[QuestionTokenRanking] ファイルが見つかりません: " + FILE_NAME);
+                System.err.println("[QuestionTokenRanking] エラー: ファイルが見つかりません: " + FILE_NAME);
+                System.err.println("[QuestionTokenRanking] 以下のパスを確認しました: data/, ../data/, /app/data/, ./");
                 return;
             }
+            System.out.println("[QuestionTokenRanking] ファイル発見: " + f.getAbsolutePath());
             List<Map<String, Object>> docs = MAPPER.readValue(
                     f,
                     new TypeReference<List<Map<String, Object>>>() {}
             );
+            System.out.println("[QuestionTokenRanking] JSON読み込み完了: " + docs.size() + " 件のドキュメント");
             for (Map<String, Object> doc : docs) {
                 Object qObj = doc.get("question");
                 if (qObj == null) continue;
@@ -75,9 +79,16 @@ public class QuestionTokenRanking {
 
     public List<String> getTopTokens(String question, int n, String[] allowPos) {
         ensureLoadedOnce();
-        if (!loaded) return Collections.emptyList();
+        if (!loaded) {
+            System.err.println("[QuestionTokenRanking] データが読み込まれていません。");
+            return Collections.emptyList();
+        }
         List<TokenInfo> list = index.get(question);
-        if (list == null || list.isEmpty()) return Collections.emptyList();
+        if (list == null || list.isEmpty()) {
+            System.err.println("[QuestionTokenRanking] 警告: 質問 \"" + question + "\" のランキングデータが見つかりません。");
+            System.err.println("[QuestionTokenRanking] インデックスには " + index.size() + " 件の質問が登録されています。");
+            return Collections.emptyList();
+        }
         Set<String> posFilter = allowPos == null ? null : new HashSet<>(Arrays.asList(allowPos));
         List<String> out = new ArrayList<>();
         for (TokenInfo t : list) {

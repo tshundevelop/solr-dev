@@ -5,8 +5,10 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Properties;
 import java.io.FileInputStream;
 
@@ -70,17 +72,14 @@ public class OpenAIEmbeddingClient {
         conn.setRequestProperty("Authorization", "Bearer " + apiKey); // 認証ヘッダーの設定
         conn.setDoOutput(true); // POSTリクエストを許可
 
-        // リクエストボディをJSON形式で作成: {"input": "...", "model": "..."}
-        // テキスト中の二重引用符と改行をエスケープ
-        String safeText = text.replace("\"", "\\\"").replace("\n", "\\n");
-        String requestBody = String.format(
-            "{\"input\": \"%s\", \"model\": \"%s\"}",
-            safeText,
-            EMBEDDING_MODEL
-        );
+        // リクエストボディをJacksonで安全に構築
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("model", EMBEDDING_MODEL);
+        payload.put("input", text);
+        String requestBody = objectMapper.writeValueAsString(payload);
 
         // リクエストボディをOutputStreamに書き込み
-        try (OutputStreamWriter writer = new OutputStreamWriter(conn.getOutputStream())) {
+        try (OutputStreamWriter writer = new OutputStreamWriter(conn.getOutputStream(), StandardCharsets.UTF_8)) {
             writer.write(requestBody);
         }
 
@@ -103,7 +102,10 @@ public class OpenAIEmbeddingClient {
 
                 // JSON配列をList<Double>にマッピング
                 if (embeddingNode.isArray()) {
-                    return objectMapper.convertValue(embeddingNode, List.class);
+                    return objectMapper.convertValue(
+                        embeddingNode,
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, Double.class)
+                    );
                 }
                 System.err.println("警告: レスポンスJSONで 'data[0].embedding' が見つからないか、配列ではありません。");
                 return null;

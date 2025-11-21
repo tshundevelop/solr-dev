@@ -27,10 +27,11 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.Properties;
 import java.io.FileInputStream;
 
-public class EmbedSearch {
+public class EmbedSearch_old {
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
     private static final String PROPERTY_FILE = "api_key.env";
     
+    // 💡 キャッシュファイルのベースディレクトリのみを定義
     private static final String CACHE_BASE_DIR = "cache/";
     private static final String CACHE_FILE_NAME = "embedding-cache.json";
 
@@ -40,6 +41,7 @@ public class EmbedSearch {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Type CACHE_FILE_TYPE = new TypeToken<Map<String, List<Double>>>() {}.getType();
     
+    // 💡 使用する埋め込みモデル名を定数として定義
     private static final String EMBEDDING_MODEL = "text-embedding-3-large"; 
 
     public static void main(String[] args) {
@@ -47,17 +49,19 @@ public class EmbedSearch {
         try {
             keyword = args[0];
         } catch (Exception e) {
-            System.out.println("No argument found. Using default keyword.");
+            System.out.println("No argument found. Using default keyword 'Solr vector search'.");
             keyword = "芥川賞を受賞した人は誰ですか。";
         }
 
         String apiKey = "";
         try {
-            Properties property = new Properties();
-            property.load(new FileInputStream(PROPERTY_FILE));
+            // 設定ファイルを読み取る処理
+			Properties property = new Properties();
+			property.load(new FileInputStream(PROPERTY_FILE));
+            // ... (apiKey取得ロジックは変更なし。DotEnvLoaderが別途必要) ...
             apiKey = property.getProperty(API_KEY_ENV_VAR);
             if (apiKey == null) {
-                System.err.println("APIキーが見つかりません。");
+                System.err.println("APIキーが見つかりません。DotEnvLoaderが実行されているか確認してください。");
                 apiKey = "DUMMY_API_KEY"; 
             }
         } catch (Exception e) {
@@ -65,48 +69,26 @@ public class EmbedSearch {
             return;
         }
 
+        // 💡 mainメソッドではキャッシュのロード/保存は行わない (getEmbeddingSearchResult内でモデルごとに処理)
+
         String[] keywordList = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"}, 2);
         System.out.println("Keyword after word split: " + String.join(", ", keywordList));
 
         try {
-            // is_chunk = false のドキュメントを検索
-            Object[] resultsNonChunkObj = getEmbeddingSearchResultWithChunkFilter(
-                "validation2000",
-                keywordList,
-                "context_vector",
-                "id,original_doc_id,score,title,context",
-                apiKey,
-                EMBEDDING_MODEL,
-                false
+            SolrDocumentList results = getEmbeddingSearchResult(
+                "JaQuAD_dev_all", 
+                keywordList, 
+                "context_vec_from_openai", 
+                apiKey, 
+                EMBEDDING_MODEL // モデル名を渡す
             );
 
-            System.out.println("\n=== Results for is_chunk=false ===");
-            SolrDocumentList resultsNonChunk = (SolrDocumentList) resultsNonChunkObj[0];
-            resultsNonChunk = Main.sliceSolrDocumentList(resultsNonChunk, 10);
-            if (resultsNonChunk != null) {
-                for (SolrDocument result : resultsNonChunk) {
+            results = Main.sliceSolrDocumentList(results, 10);
+
+            if (results != null) {
+                System.out.println("\n--- 検索結果 ---");
+                for (SolrDocument result : results) {
                     System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
-                    System.out.println("title: " + result.getFieldValue("title"));
-                }
-            }
-
-            // is_chunk = true のドキュメントを検索
-            Object[] resultsChunkObj = getEmbeddingSearchResultWithChunkFilter(
-                "validation2000",
-                keywordList,
-                "chunk_vector",
-                "id,original_doc_id,score,title,context",
-                apiKey,
-                EMBEDDING_MODEL,
-                true
-            );
-
-            System.out.println("\n=== Results for is_chunk=true ===");
-            SolrDocumentList resultsChunk = (SolrDocumentList) resultsChunkObj[0];
-            resultsChunk = Main.sliceSolrDocumentList(resultsChunk, 10);
-            if (resultsChunk != null) {
-                for (SolrDocument result : resultsChunk) {
-                    System.out.println("Chunk ID: " + result.getFieldValue("id") + ", Original Doc ID: " + result.getFieldValue("original_doc_id") + ", Score: " + result.getFieldValue("score"));
                     System.out.println("title: " + result.getFieldValue("title"));
                 }
             }
@@ -114,54 +96,46 @@ public class EmbedSearch {
             System.err.println("検索中に致命的なエラーが発生しました。");
             e.printStackTrace();
         } 
+        // finally ブロックから saveCacheToFile() を削除
     }
 
-    /**
-     * is_chunkフィールドでフィルタリングして埋め込みベクトル検索を実行
-     * 
-     * @param coreName Solrコア名
-     * @param keywordList 検索キーワードリスト
-     * @param field ベクトルフィールド名
-     * @param apiKey OpenAI APIキー
-     * @param modelName モデル名
-     * @param isChunk is_chunkフィルタ値（true/false）
-     * @return 検索結果
-     */
-    public static Object[] getEmbeddingSearchResultWithChunkFilter(
+    public static SolrDocumentList getEmbeddingSearchResult(
         String coreName,
         String[] keywordList,
         String field,
-        String targetField,
         String apiKey,
-        String modelName,
-        boolean isChunk
+        String modelName
     ) throws Exception {
         String solrUrl = "http://solr:8983/solr/" + coreName;
         String keyword = String.join(" ", keywordList);
         float[] queryVector = getOrCreateEmbedding(keyword, field, apiKey, modelName);
 
+        // --- Solr検索処理 ---
         try (SolrClient solr = new HttpSolrClient.Builder(solrUrl).build()) {
             String vectorString = floatArrayToJson(queryVector);
 
-            // is_chunkフィルタを追加
-            String filterQuery = "is_chunk:" + isChunk;
-
             ModifiableSolrParams params = new ModifiableSolrParams();
             params.set("q", String.format("{!knn f=%s topK=10000}", field) + vectorString);
-            params.set("fq", filterQuery); // フィルタクエリでis_chunkを指定
-            params.set("fl", targetField);
+            params.set("fl", "id,original_doc_id,score,title,context");
             params.set("rows", 10000);
 
             QueryRequest queryRequest = new QueryRequest(params);
             queryRequest.setMethod(SolrRequest.METHOD.POST);
 
             QueryResponse response = queryRequest.process(solr);
-            SolrDocumentList docs = response.getResults();
-            
-            return new Object[]{docs, params};
+            return response.getResults();
         }
     }
 
+    /**
+     * 埋め込みベクトルを取得（キャッシュヒット時は再生成しない）。
+     * @param keyword クエリ文字列（形態素分割後推奨）
+     * @param field   判定用フィールド名（"openai" を含む場合 OpenAI ルート）
+     * @param apiKey  OpenAI APIキー
+     * @param modelName モデル名（キャッシュ名前空間）
+     * @return float[] 埋め込みベクトル
+     * @throws Exception 生成失敗時
+     */
     public static float[] getOrCreateEmbedding(String keyword, String field, String apiKey, String modelName) throws Exception {
         float[] queryVector = getCachedVector(modelName, keyword);
         if (queryVector != null) {
@@ -172,7 +146,7 @@ public class EmbedSearch {
         if (field.contains("openai")) {
             embedding = OpenAIEmbeddingClient.getEmbeddingFromOpenAI(keyword, apiKey);
         } else {
-            embedding = OpenAIEmbeddingClient.getEmbeddingFromOpenAI(keyword, apiKey);
+            embedding = EmbeddingClient.getEmbeddingFromPython(keyword);
         }
         if (embedding == null || embedding.isEmpty()) {
             throw new Exception("埋め込みベクトルの取得に失敗しました。");
@@ -217,6 +191,7 @@ public class EmbedSearch {
         float[] safeCopy = vector.clone();
         getInMemoryCache(modelName).put(keyword, safeCopy);
         persistCacheToDisk(modelName);
+        System.out.println("💾 埋め込みベクトルをJSONキャッシュに保存しました。");
     }
 
     private static ConcurrentMap<String, float[]> getInMemoryCache(String modelName) {

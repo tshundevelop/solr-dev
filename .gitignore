@@ -485,6 +485,7 @@ $RECYCLE.BIN/
 
 # User-detemined files
 memo.txt
+command.txt
 get_data.py
 make_vector_json.py
 .vscode

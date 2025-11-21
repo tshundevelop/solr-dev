@@ -13,25 +13,28 @@ public class Config {
     private int rankChoiceWordNumFromTop;
     private int paraphraseWordNumFromTop;
     private String fieldSearchMethodType;
+    // チャンクドキュメントを検索対象にするかどうか
+    private boolean isChunk;
     // 結果保存時に searchType/結果フォルダ名/日時 で使う中間フォルダ名
     private String resultFolderName;
 
     public Config() {
         // デフォルト値の設定
-        this.coreName = "JaQuAD_dev_all";
-        this.type = "keyword";
-        this.numRows = 10000;
+        this.coreName = "production4000";
+        this.type = "embedding";
+        this.numRows = 100;
         this.topk = 10;
         this.keywordTargetField = "context";
-        this.embeddingTargetField = "context_vec_from_openai";
+        this.isChunk = true;
+        this.embeddingTargetField = isChunk ? "chunk_vector" : "context_vector";
         this.modelName = "text-embedding-3-large";
-        this.targetFields = new String[]{"id", "title", "context", "score"};
+        this.targetFields = new String[]{"id", "original_doc_id", "title", "context", "score"};
         this.partOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
-        this.choiceWordNumFromTop = 2;
+        this.choiceWordNumFromTop = 3;
         this.rankChoiceWordNumFromTop = 3; // 0以下なら無効（従来の分かち書き使用）
         this.paraphraseWordNumFromTop = 2;
         this.fieldSearchMethodType = "OR";
-        this.resultFolderName = "baseline"; // デフォルトの結果フォルダ名
+        this.resultFolderName = "chunk_pro"; // デフォルトの結果フォルダ名
     }
 
     // getter/setterメソッド    
@@ -73,6 +76,9 @@ public class Config {
 
     public String getFieldSearchMethodType() { return fieldSearchMethodType; }
     public void setFieldSearchMethodType(String fieldSearchMethodType) { this.fieldSearchMethodType = fieldSearchMethodType; }
+
+    public boolean isChunk() { return isChunk; }
+    public void setChunk(boolean isChunk) { this.isChunk = isChunk; }
 
     public String getResultFolderName() { return resultFolderName; }
     public void setResultFolderName(String resultFolderName) { this.resultFolderName = resultFolderName; }

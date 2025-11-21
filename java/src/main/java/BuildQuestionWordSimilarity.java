@@ -8,8 +8,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 public class BuildQuestionWordSimilarity {
-    private static final String INPUT_FILE_NAME = "JaQuAD_dev_all.json";
-    private static final String OUTPUT_FILE_NAME = "JaQuAD_dev_all_word_sim.json";
+    private static final List<String> DEFAULT_INPUT_FILES = Arrays.asList(
+        "jaquad/processed/jaquad_production_792.json",
+        "jaquad/processed/jaquad_validation_50.json"
+        // "other_file.json"  // 必要に応じて追加
+    );
+    private static final String OUTPUT_FILE = "data/jaquad_merged_word_sim.json";  // 出力ファイルパス
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String PROPERTY_FILE = "api_key.env";
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
@@ -31,22 +35,56 @@ public class BuildQuestionWordSimilarity {
                 return;
             }
 
-        // 入力パス解決（docker実行時もローカル実行時も対応）
-        File inputFile = resolveExistingFile(new String[] {"data", "../data", "/app/data", "."}, INPUT_FILE_NAME);
-        if (inputFile == null) {
-        System.err.println("入力ファイルが見つかりません: " + INPUT_FILE_NAME + "\n候補ディレクトリ: data, ../data, /app/data, .");
-        return;
+            // 入力ファイルリスト: コマンドライン引数 or デフォルト
+            List<String> inputFileNames = args.length > 0 ? Arrays.asList(args) : DEFAULT_INPUT_FILES;
+            
+            System.out.println("=== Processing " + inputFileNames.size() + " file(s) ===");
+            
+            // 全ファイルの結果をマージ
+            List<Map<String, Object>> allResults = new ArrayList<>();
+            ConcurrentMap<String, List<Double>> embedCache = new ConcurrentHashMap<>();
+            
+            for (String inputFileName : inputFileNames) {
+                System.out.println("\n--- Processing: " + inputFileName + " ---");
+                List<Map<String, Object>> results = processFile(inputFileName, pos, limit, apiKey, embedCache);
+                allResults.addAll(results);
+                System.out.println("✓ Processed " + results.size() + " records from " + inputFileName);
+            }
+            
+            // 統合結果を保存
+            File outputFile = resolveOutputFile(OUTPUT_FILE);
+            if (outputFile.getParentFile() != null && !outputFile.getParentFile().exists()) {
+                outputFile.getParentFile().mkdirs();
+            }
+            MAPPER.writerWithDefaultPrettyPrinter().writeValue(outputFile, allResults);
+            System.out.println("\n=== All files processed successfully ===");
+            System.out.println("✓ Saved merged results: " + outputFile.getAbsolutePath() + " (" + allResults.size() + " records)");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+    }
+    
+    private static List<Map<String, Object>> processFile(
+            String inputFileName, 
+            String[] pos, 
+            int limit, 
+            String apiKey,
+            ConcurrentMap<String, List<Double>> embedCache) throws Exception {
+        // 入力パス解決（docker実行時もローカル実行時も対応）
+        File inputFile = resolveExistingFile(new String[] {"data", "../data", "/app/data", "."}, inputFileName);
+        if (inputFile == null) {
+            System.err.println("入力ファイルが見つかりません: " + inputFileName + "\n候補ディレクトリ: data, ../data, /app/data, .");
+            return Collections.emptyList();
+        }
+        
+        System.out.println("Found input file: " + inputFile.getAbsolutePath());
 
         // 入力読込
         List<Map<String, Object>> docs = MAPPER.readValue(
             inputFile, new TypeReference<List<Map<String, Object>>>() {}
         );
 
-            List<Map<String, Object>> out = new ArrayList<>();
-
-            // 簡易メモリキャッシュ（同一テキストの再計算回避）
-            ConcurrentMap<String, List<Double>> embedCache = new ConcurrentHashMap<>();
+        List<Map<String, Object>> out = new ArrayList<>();
 
             int idx = 0;
             for (Map<String, Object> doc : docs) {
@@ -91,13 +129,7 @@ public class BuildQuestionWordSimilarity {
                 System.out.println("Processed: " + idx + "/" + docs.size());
             }
 
-            // 保存（入力ファイルと同じディレクトリに保存）
-            File outputFile = new File(inputFile.getParentFile(), OUTPUT_FILE_NAME);
-            MAPPER.writerWithDefaultPrettyPrinter().writeValue(outputFile, out);
-            System.out.println("Saved: " + outputFile.getAbsolutePath() + " (" + out.size() + " records)");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+            return out;
     }
 
     private static String asString(Object v) {
@@ -135,5 +167,21 @@ public class BuildQuestionWordSimilarity {
             if (f.exists() && f.isFile()) return f;
         }
         return null;
+    }
+    
+    private static File resolveOutputFile(String outputPath) {
+        // 出力ファイルパスを解決（存在チェックなし、書き込み用）
+        File f = new File(outputPath);
+        if (!f.isAbsolute()) {
+            // 相対パスの場合、複数の候補から探す
+            for (String baseDir : new String[]{".", "..", "/app"}) {
+                File candidate = new File(baseDir, outputPath);
+                File parent = candidate.getParentFile();
+                if (parent != null && (parent.exists() || parent.mkdirs())) {
+                    return candidate;
+                }
+            }
+        }
+        return f;
     }
 }

@@ -70,7 +70,7 @@ public class Evaluation {
 
         // 検索結果の中に正解IDが含まれているかチェック
         for (SolrDocument doc : searchResults) {
-            String docId = (String) doc.getFirstValue("id");
+            String docId = (String) doc.getFirstValue("original_doc_id");
             if (docId.equals(correctId)) {
                 score = 1.0;
                 break;
@@ -84,7 +84,7 @@ public class Evaluation {
 
         for (int i = 0; i < searchResults.size(); i++) {
             SolrDocument doc = searchResults.get(i);
-            String docId = (String) doc.getFirstValue("id");
+            String docId = (String) doc.getFirstValue("original_doc_id");
             if (docId.equals(correctId)) {
                 score = 1.0 / (i + 1);
                 break;
@@ -99,7 +99,7 @@ public class Evaluation {
 
         for (int i = 0; i < searchResults.size(); i++) {
             SolrDocument doc = searchResults.get(i);
-            String docId = (String) doc.getFirstValue("id");
+            String docId = (String) doc.getFirstValue("original_doc_id");
             if (docId.equals(correctId)) {
                 relevantCount++;
                 totalScore += (double) relevantCount / (i + 1);
