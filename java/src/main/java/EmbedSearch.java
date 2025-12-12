@@ -250,6 +250,16 @@ public class EmbedSearch {
                             memoryCache.putIfAbsent(entry.getKey(), toFloatArray(values));
                         }
                     }
+                    System.out.println("キャッシュファイルを正常に読み込みました (エントリ数: " + persisted.size() + ", モデル: " + modelName + ")");
+                }
+            } catch (com.google.gson.JsonSyntaxException e) {
+                System.err.println("❌ JSONキャッシュファイルが破損しています。削除して再生成します (モデル: " + modelName + ")");
+                System.err.println("エラー詳細: " + e.getMessage());
+                try {
+                    Files.deleteIfExists(cacheFile);
+                    System.err.println("✅ 破損したキャッシュファイルを削除しました: " + cacheFile);
+                } catch (IOException deleteError) {
+                    System.err.println("キャッシュファイルの削除に失敗: " + deleteError.getMessage());
                 }
             } catch (IOException e) {
                 System.err.println("JSONキャッシュの読み込みに失敗しました (モデル: " + modelName + "): " + e.getMessage());

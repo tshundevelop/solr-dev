@@ -58,6 +58,7 @@
                     <!-- <mainClass>OpenAIUseLLM</mainClass> -->
                     <!-- <mainClass>BuildQuestionWordSimilarity</mainClass> -->
                     <!-- <mainClass>JaQuADToSolr</mainClass> -->
+                    <!-- <mainClass>QuestionWordFrequency</mainClass> -->
                 </configuration>
             </plugin>
         </plugins>

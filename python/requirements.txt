@@ -2,3 +2,5 @@ Flask
 sentence-transformers
 streamlit
 pandas
+spacy>=3.5.0
+gensim>=4.3.0

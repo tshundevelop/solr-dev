@@ -11,10 +11,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Properties;
 import java.io.FileInputStream;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * OpenAI API (Embeddings) を利用するJavaクライアント。
  * APIキーは環境変数 'OPENAI_API_KEY' から読み込みます。
+ * シンプルなrate limit防止機能付き。
  */
 public class OpenAIEmbeddingClient {
 
@@ -22,7 +25,34 @@ public class OpenAIEmbeddingClient {
     private static final String EMBEDDING_MODEL = "text-embedding-3-large"; // 推奨される埋め込みモデル
     private static final String PROPERTY_FILE = "api_key.env";
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY"; // 環境変数名
-    private static final ObjectMapper objectMapper = new ObjectMapper();    
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    
+    // レート制限対策 - より安全な設定
+    private static final long REQUEST_INTERVAL_MS = 2000; // リクエスト間隔2秒 (30リクエスト/分)
+    private static final AtomicLong lastRequestTime = new AtomicLong(0);
+    private static final AtomicInteger requestCount = new AtomicInteger(0);
+
+    /**
+     * シンプルなrate limit制御
+     * リクエスト間隔を調整してOpenAI APIの制限を回避
+     */
+    private static void preventRateLimit() throws InterruptedException {
+        long currentTime = System.currentTimeMillis();
+        long timeSinceLastRequest = currentTime - lastRequestTime.get();
+        
+        if (timeSinceLastRequest < REQUEST_INTERVAL_MS) {
+            long sleepTime = REQUEST_INTERVAL_MS - timeSinceLastRequest;
+            Thread.sleep(sleepTime);
+        }
+        
+        lastRequestTime.set(System.currentTimeMillis());
+        int count = requestCount.incrementAndGet();
+        
+        // 100リクエストごとにステータス表示
+        if (count % 50 == 0) {
+            System.out.println("📊 [API Stats] Processed " + count + " requests successfully");
+        }
+    }
 
     public static void main(String[] args) {
         try {
@@ -58,11 +88,28 @@ public class OpenAIEmbeddingClient {
 
     /**
      * OpenAI APIを呼び出し、指定されたテキストの埋め込みベクトルを取得します。
+     * シンプルなrate limit制御付き。
      * @param text 埋め込みを取得するテキスト
      * @param apiKey OpenAI APIキー
      * @return 埋め込みベクトル (List<Double>)
      */
     public static List<Double> getEmbeddingFromOpenAI(String text, String apiKey) throws Exception {
+        return getEmbeddingWithRetry(text, apiKey, 0);
+    }
+    
+    /**
+     * リトライ機能付きのembedding取得
+     * 絶対に成功するまでリトライを続ける
+     */
+    private static List<Double> getEmbeddingWithRetry(String text, String apiKey, int retryCount) throws Exception {
+        // 無制限リトライ - 絶対に失敗させない
+        if (retryCount > 20) {
+            System.err.println("❌ 20回リトライしても失敗 - より長い待機時間で継続...");
+        }
+        
+        // Rate limit防止
+        preventRateLimit();
+        
         URL url = new URL(OPENAI_API_URL);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
@@ -116,6 +163,29 @@ public class OpenAIEmbeddingClient {
             try (BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()))) {
                 errorBody = errorReader.lines().reduce("", String::concat);
             } catch (IOException ignored) { /* エラーボディがない場合も考慮 */ }
+
+            // Rate limit errorの場合は絶対に成功するまで無限リトライ
+            if (responseCode == 429) {
+                long waitTime;
+                if (retryCount <= 10) {
+                    waitTime = Math.min(5000L * (1L << Math.min(retryCount, 6)), 120000L); // 5秒から最大2分まで
+                } else {
+                    waitTime = 180000L; // 10回超過後は3分待機
+                }
+                
+                System.err.println("🔄 Rate limit detected (attempt " + (retryCount + 1) + "), waiting " + (waitTime/1000) + " seconds - WILL RETRY UNTIL SUCCESS");
+                Thread.sleep(waitTime);
+                
+                // 絶対に成功するまで無限リトライ
+                return getEmbeddingWithRetry(text, apiKey, retryCount + 1);
+            }
+
+            // その他のサーバーエラーも無限リトライ
+            if (responseCode >= 500) {
+                System.err.println("🔄 Server error " + responseCode + " (attempt " + (retryCount + 1) + "), waiting 10 seconds and retrying...");
+                Thread.sleep(10000);
+                return getEmbeddingWithRetry(text, apiKey, retryCount + 1);
+            }
 
             System.err.println("OpenAI APIからのエラー (HTTP " + responseCode + ")");
             System.err.println("エラーボディ: " + errorBody);

@@ -9,7 +9,7 @@ public class Config {
     private String[] targetFields;
     private String[] partOfSpeech;
     private int choiceWordNumFromTop;
-    // 新規: 質問ごとの単語ランキングからチョイスする個数（>0 で有効化）
+    // TF-IDFランキングから上位N個の単語を取得する設定（>0でTF-IDF使用、0で従来の分かち書き使用）
     private int rankChoiceWordNumFromTop;
     private int paraphraseWordNumFromTop;
     private String fieldSearchMethodType;
@@ -20,9 +20,9 @@ public class Config {
 
     public Config() {
         // デフォルト値の設定
-        this.coreName = "production4000";
-        this.type = "embedding";
-        this.numRows = 100;
+        this.coreName = "production_split-4000";
+        this.type = "keyword";
+        this.numRows = 10000;
         this.topk = 10;
         this.keywordTargetField = "context";
         this.isChunk = true;
@@ -32,9 +32,9 @@ public class Config {
         this.partOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
         this.choiceWordNumFromTop = 3;
         this.rankChoiceWordNumFromTop = 3; // 0以下なら無効（従来の分かち書き使用）
-        this.paraphraseWordNumFromTop = 2;
+        this.paraphraseWordNumFromTop = 2; // パラフレーズ無効（TF-IDF単語のみ使用）
         this.fieldSearchMethodType = "OR";
-        this.resultFolderName = "chunk_pro"; // デフォルトの結果フォルダ名
+        this.resultFolderName = "test"; // デフォルトの結果フォルダ名
     }
 
     // getter/setterメソッド    

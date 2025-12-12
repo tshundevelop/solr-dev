@@ -11,21 +11,75 @@ import java.util.Date;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Callable;
 
 public class Main {
     private static Config config;
     private static final String PROPERTY_FILE = "api_key.env";
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
-    private static final QuestionTokenRanking RANKING = new QuestionTokenRanking();
+    private static final TFIDFWordRanking TFIDF_RANKING = new TFIDFWordRanking();
     
     public static void main(String[] args) {
         config = new Config();
-
+        
+        // 実行する検索タイプのリスト
+        // String[] searchTypes = {"keyword", "embedding", "hybrid"};
+        String[] searchTypes = {"embedding", "hybrid"};
+        
+        for (String searchType : searchTypes) {
+            try {
+                System.out.println("\n======================================");
+                System.out.println("🔍 " + searchType.toUpperCase() + " 検索評価を開始します");
+                System.out.println("======================================");
+                
+                // 検索タイプを設定
+                config.setType(searchType);
+                config.setResultFolderName(searchType + "_tfidf_evaluation");
+                
+                // 各検索タイプの評価を実行
+                boolean success = runEvaluationForType(searchType);
+                
+                if (success) {
+                    System.out.println("✅ " + searchType.toUpperCase() + " 検索評価が正常に完了しました");
+                } else {
+                    System.err.println("❌ " + searchType.toUpperCase() + " 検索評価でエラーが発生しました");
+                }
+                
+                // 次の評価の前に少し待機
+                Thread.sleep(2000);
+                
+            } catch (Exception e) {
+                System.err.println("❌ " + searchType.toUpperCase() + " 検索評価でエラー: " + e.getMessage());
+                e.printStackTrace();
+                // エラーが発生しても次の検索タイプに継続
+                continue;
+            }
+        }
+        
+        System.out.println("\n🎉 全ての検索タイプの評価が完了しました！");
+    }
+    
+    /**
+     * 指定された検索タイプで評価を実行
+     * @param searchType 検索タイプ（keyword, embedding, hybrid）
+     * @return 成功したかどうか
+     */
+    private static boolean runEvaluationForType(String searchType) {
         try {
-            // QuestionTokenRankingの初期化（ランキング機能を使用する場合のみ）
+            System.out.println("\n📊 " + searchType + " 検索評価を実行中...");
+            
+            // TF-IDFランキングの初期化（設定値が0より大きい場合）
             if (config.getRankChoiceWordNumFromTop() > 0) {
-                System.out.println("ランキング機能が有効です。データを読み込んでいます...");
-                RANKING.ensureLoadedOnce();
+                System.out.println("TF-IDFランキング機能が有効です。データを読み込んでいます...");
+                TFIDF_RANKING.ensureLoadedOnce();
+                if (searchType.equals("keyword")) { // 最初の実行時のみ統計表示
+                    TFIDF_RANKING.printStats();
+                }
+            } else {
+                System.out.println("従来の分かち書き機能を使用します。");
             }
             
             // Solrの設定
@@ -46,95 +100,139 @@ public class Main {
             DotEnvLoader.load(PROPERTY_FILE, API_KEY_ENV_VAR);
             String apiKey = System.getProperty(API_KEY_ENV_VAR);
 
-            // 各ドキュメントに対して処理
-            for (SolrDocument doc : docs) {
-                String question = (String) doc.getFirstValue("question");
-                String docId = (String) doc.getFirstValue("original_doc_id");
-                String title = (String) doc.getFirstValue("title");
+            // 並列処理用のスレッドプール
+            int threadPoolSize = Runtime.getRuntime().availableProcessors() * 2;
+            ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
+            System.out.println("Using thread pool with " + threadPoolSize + " threads for parallel search");
+            
+            try {
+                // バッチサイズ（例: 20件ずつ処理）
+                int batchSize = 20;
+                int totalDocs = docs.size();
+                
+                for (int batchStart = 0; batchStart < totalDocs; batchStart += batchSize) {
+                    int batchEnd = Math.min(batchStart + batchSize, totalDocs);
+                    System.out.println("\n=== Processing batch [" + (batchStart+1) + "-" + batchEnd + "] ===");
+                    
+                    // Phase 1: 検索タスクを並列投入
+                    List<Future<LinkedHashMap<String, Object>>> futures = new ArrayList<>();
+                    
+                    for (int i = batchStart; i < batchEnd; i++) {
+                        final SolrDocument doc = docs.get(i);
+                        final int index = i;
+                        final int finalTotalDocs = totalDocs;
+                        
+                        Future<LinkedHashMap<String, Object>> future = executorService.submit(new Callable<LinkedHashMap<String, Object>>() {
+                            @Override
+                            public LinkedHashMap<String, Object> call() throws Exception {
+                                final String question = (String) doc.getFirstValue("question");
+                                final String docId = (String) doc.getFirstValue("original_doc_id");
+                                final String title = (String) doc.getFirstValue("title");
 
-                // クエリトークンの決定: ランキング優先設定が有効ならランキングから取得、無効なら従来の分かち書き
-                String[] splittedQuestionList;
-                if (config.getRankChoiceWordNumFromTop() > 0) {
-                    int n = config.getRankChoiceWordNumFromTop();
-                    List<String> topTokens = RANKING.getTopTokens(question, n, config.getPartOfSpeech());
-                    if (topTokens == null || topTokens.isEmpty()) {
-                        // フォールバック: 従来の分かち書き
-                        System.out.println("警告: 質問 \"" + question + "\" のランキングデータが見つかりません。従来の分かち書きを使用します。");
-                        splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
-                    } else {
-                        System.out.println("ランキングから上位" + topTokens.size() + "トークンを取得: " + String.join(", ", topTokens));
-                        splittedQuestionList = topTokens.toArray(new String[0]);
+                                // クエリトークンの決定: TF-IDFランキング優先設定が有効ならTF-IDFから取得、無効なら従来の分かち書き
+                                final String[] splittedQuestionList;
+                                if (config.getRankChoiceWordNumFromTop() > 0) {
+                                    int n = config.getRankChoiceWordNumFromTop();
+                                    List<String> topWords = TFIDF_RANKING.getTopWords(docId, n);
+                                    if (topWords == null || topWords.isEmpty()) {
+                                        // フォールバック: 従来の分かち書き
+                                        System.out.println("警告: 文書ID \"" + docId + "\" のTF-IDFランキングデータが見つかりません。従来の分かち書きを使用します。");
+                                        splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
+                                    } else {
+                                        System.out.println("[" + (index+1) + "/" + finalTotalDocs + "] TF-IDFから上位" + topWords.size() + "語を取得: " + String.join(", ", topWords));
+                                        splittedQuestionList = topWords.toArray(new String[0]);
+                                    }
+                                } else {
+                                    splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
+                                }
+                                final String[] paraphraseQuestionList = OpenAIUseLLM.paraphraseTopN(splittedQuestionList, config.getParaphraseWordNumFromTop());
+                                
+                                // 検索実行
+                                SolrDocumentList searchResults;
+                                String searchParams;
+                                if (config.getType().equals("keyword")) {
+                                    Object[] resultObj = KeywordSearch.getKeywordSearchResultWithChunkFilter(
+                                        config.getCoreName(),
+                                        paraphraseQuestionList,
+                                        String.join(",", config.getTargetFields()),
+                                        config.getKeywordTargetField(),
+                                        config.getFieldSearchMethodType(),
+                                        config.isChunk()
+                                    );
+                                    searchResults = (SolrDocumentList) resultObj[0];
+                                    searchParams = resultObj[1].toString();
+                                } else if (config.getType().equals("embedding")) {
+                                    Object[] resultObj = EmbedSearch.getEmbeddingSearchResultWithChunkFilter(
+                                        config.getCoreName(),
+                                        paraphraseQuestionList,
+                                        config.getEmbeddingTargetField(),
+                                        String.join(",", config.getTargetFields()),
+                                        apiKey,
+                                        config.getModelName(),
+                                        config.isChunk()
+                                    );
+                                    searchResults = (SolrDocumentList) resultObj[0];
+                                    searchParams = resultObj[1].toString();
+                                } else if (config.getType().equals("hybrid")) {
+                                    Object[] resultObj = HybridSearch.getHybridSearchResultWithChunkFilter(
+                                        config.getCoreName(),
+                                        paraphraseQuestionList,
+                                        config.getEmbeddingTargetField(),
+                                        config.getKeywordTargetField(),
+                                        config.getFieldSearchMethodType(),
+                                        apiKey,
+                                        config.getModelName(),
+                                        config.isChunk()
+                                    );
+                                    searchResults = (SolrDocumentList) resultObj[0];
+                                    searchParams = resultObj[1].toString();
+                                } else {
+                                    throw new Exception("Unknown evaluation type: " + config.getType());
+                                }
+
+                                // 結果から上位K件を取得
+                                final SolrDocumentList slicedSearchResults = Main.sliceSolrDocumentList(searchResults, config.getTopk());
+
+                                // Evaluation.javaで評価
+                                final EvaluationResult evalResult = Evaluation.evaluate(slicedSearchResults, question, docId);
+
+                                // final変数として再定義
+                                final SolrDocumentList finalSlicedSearchResults = slicedSearchResults;
+                                final String finalSearchParams = searchParams;
+
+                                // 結果を保存
+                                LinkedHashMap<String, Object> resultMap = new LinkedHashMap<String, Object>() {{
+                                    put("correctId", docId);
+                                    put("title", title);
+                                    put("question", question);
+                                    put("params", finalSearchParams);
+                                    put("splittedQuestion", splittedQuestionList);
+                                    put("paraphraseQuestion", paraphraseQuestionList);
+                                    put("numFound", finalSlicedSearchResults.getNumFound());
+                                    put("coverage", evalResult.getCoverage());
+                                    put("mrr", evalResult.getMrr());
+                                    put("searchResults", finalSlicedSearchResults);
+                                }};
+                                
+                                return resultMap;
+                            }
+                        });
+                        
+                        futures.add(future);
                     }
-                } else {
-                    splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
+                    
+                    System.out.println("  → Submitted " + futures.size() + " search tasks");
+                    
+                    // Phase 2: 結果を収集（順序保持）
+                    for (Future<LinkedHashMap<String, Object>> future : futures) {
+                        LinkedHashMap<String, Object> resultMap = future.get();
+                        evaluationResults.add(resultMap);
+                    }
+                    
+                    System.out.println("  ✓ Processed documents: " + evaluationResults.size() + "/" + totalDocs);
                 }
-                String[] paraphraseQuestionList = OpenAIUseLLM.paraphraseTopN(splittedQuestionList, config.getParaphraseWordNumFromTop());
-                SolrDocumentList searchResults;
-                String searchParams;  // final変数として宣言
-                if (config.getType().equals("keyword")) {
-                    Object[] resultObj = KeywordSearch.getKeywordSearchResultWithChunkFilter(
-                        config.getCoreName(),
-                        paraphraseQuestionList,
-                        String.join(",", config.getTargetFields()),
-                        config.getKeywordTargetField(),
-                        config.getFieldSearchMethodType(),
-                        config.isChunk()
-                    );
-                    searchResults = (SolrDocumentList) resultObj[0];
-                    searchParams = resultObj[1].toString();
-                } else if (config.getType().equals("embedding")) {
-                    System.out.println(config.getEmbeddingTargetField());
-                    Object[] resultObj = EmbedSearch.getEmbeddingSearchResultWithChunkFilter(
-                        config.getCoreName(),
-                        paraphraseQuestionList,
-                        config.getEmbeddingTargetField(),
-                        String.join(",", config.getTargetFields()),
-                        apiKey,
-                        config.getModelName(),
-                        config.isChunk()
-                    );
-                    searchResults = (SolrDocumentList) resultObj[0];
-                    searchParams = resultObj[1].toString();
-                } else if (config.getType().equals("hybrid")) {
-                    Object[] resultObj = HybridSearch.getHybridSearchResultWithChunkFilter(
-                        config.getCoreName(),
-                        paraphraseQuestionList,
-                        config.getEmbeddingTargetField(),
-                        config.getKeywordTargetField(),
-                        config.getFieldSearchMethodType(),
-                        apiKey,
-                        config.getModelName(),
-                        config.isChunk()
-                    );
-                    searchResults = (SolrDocumentList) resultObj[0];
-                    searchParams = resultObj[1].toString();
-                } else {
-                    System.out.println("Unknown evaluation type: " + config.getType());
-                    return;
-                }
-
-                // 結果から上位K件を取得
-                SolrDocumentList slicedSearchResults = Main.sliceSolrDocumentList(searchResults, config.getTopk());
-
-                // Evaluation.javaで評価
-                EvaluationResult evalResult = Evaluation.evaluate(slicedSearchResults, question, docId);
-
-                // 結果を保存
-                LinkedHashMap<String, Object> resultMap = new LinkedHashMap<String, Object>() {{
-                    put("correctId", docId);
-                    put("title", title);
-                    put("question", question);
-                    put("params", searchParams);
-                    put("splittedQuestion", splittedQuestionList);
-                    put("paraphraseQuestion", paraphraseQuestionList);
-                    put("numFound", slicedSearchResults.getNumFound());
-                    put("coverage", evalResult.getCoverage());
-                    put("mrr", evalResult.getMrr());
-                    put("searchResults", slicedSearchResults);
-                }};
-                evaluationResults.add(resultMap);
-
-                System.out.println("Processed documents: " + evaluationResults.size() + "/" + docs.size());
+            } finally {
+                executorService.shutdown();
             }
 
             // 時間計測終了
@@ -153,9 +251,11 @@ public class Main {
             String resultsPath = dirPath + "/results.json";
             try {
                 objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(resultsPath), evaluationResults);
+                System.out.println("📄 結果を保存しました: " + resultsPath);
             } catch (Exception e) {
                 System.err.println("Failed to save results.json: " + e.getMessage());
                 e.printStackTrace();
+                return false;
             }
 
             // 正誤状態IDのJSON保存
@@ -176,9 +276,11 @@ public class Main {
             }
             try {
                 objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(statusPath), statusMap);
+                System.out.println("📊 ステータスを保存しました: " + statusPath);
             } catch (Exception e) {
                 System.err.println("Failed to save status.json: " + e.getMessage());
                 e.printStackTrace();
+                return false;
             }
 
             // サマリーの保存
@@ -211,12 +313,20 @@ public class Main {
             }};
             try {
                 objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(summaryPath), summaryMap);
+                System.out.println("📋 サマリーを保存しました: " + summaryPath);
             } catch (Exception e) {
                 System.err.println("Failed to save summary.json: " + e.getMessage());
                 e.printStackTrace();
+                return false;
             }
+
+            System.out.println("✅ " + searchType + " 検索評価が正常に完了しました（処理時間: " + duration + "ms）");
+            return true;
+            
         } catch (Exception e) {
+            System.err.println("❌ " + searchType + " 検索評価でエラー: " + e.getMessage());
             e.printStackTrace();
+            return false;
         }
     }
 
