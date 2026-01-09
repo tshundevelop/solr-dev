@@ -3,7 +3,6 @@
 /app/java/src/main/java/OpenAIUseLLM.java
 /app/java/src/main/java/BuildQuestionWordSimilarity.java
 /app/java/src/main/java/EmbedSearch.java
-/app/java/src/main/java/WordVectorLoader.java
 /app/java/src/main/java/KeywordSearch.java
 /app/java/src/main/java/Evaluation.java
 /app/java/src/main/java/WordSplitter.java
@@ -13,7 +12,6 @@
 /app/java/src/main/java/JaQuADToSolr.java
 /app/java/src/main/java/QuestionTokenRanking.java
 /app/java/src/main/java/EmbeddingClient.java
-/app/java/src/main/java/WordMoversDistance.java
 /app/java/src/main/java/QuestionWordFrequency.java
 /app/java/src/main/java/Config.java
 /app/java/src/main/java/DotEnvLoader.java

@@ -5,11 +5,14 @@ import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import java.io.File;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,9 +28,8 @@ public class Main {
     public static void main(String[] args) {
         config = new Config();
         
-        // 実行する検索タイプのリスト
-        // String[] searchTypes = {"keyword", "embedding", "hybrid"};
-        String[] searchTypes = {"embedding", "hybrid"};
+        // 実行する検索タイプのリスト（Configから取得）
+        String[] searchTypes = config.getSearchTypes();
         
         for (String searchType : searchTypes) {
             try {
@@ -37,7 +39,6 @@ public class Main {
                 
                 // 検索タイプを設定
                 config.setType(searchType);
-                config.setResultFolderName(searchType + "_tfidf_evaluation");
                 
                 // 各検索タイプの評価を実行
                 boolean success = runEvaluationForType(searchType);
@@ -71,29 +72,37 @@ public class Main {
         try {
             System.out.println("\n📊 " + searchType + " 検索評価を実行中...");
             
-            // TF-IDFランキングの初期化（設定値が0より大きい場合）
-            if (config.getRankChoiceWordNumFromTop() > 0) {
-                System.out.println("TF-IDFランキング機能が有効です。データを読み込んでいます...");
-                TFIDF_RANKING.ensureLoadedOnce();
-                if (searchType.equals("keyword")) { // 最初の実行時のみ統計表示
-                    TFIDF_RANKING.printStats();
-                }
-            } else {
-                System.out.println("従来の分かち書き機能を使用します。");
-            }
+            // JSONから正解データを読み込み
+            System.out.println("正解データをJSONから読み込んでいます: " + config.getGroundTruthJsonPath());
+            ObjectMapper mapper = new ObjectMapper();
             
-            // Solrの設定
-            String sourceCoreUrl = "http://solr:8983/solr/" + config.getCoreName();
-            SolrClient sourceClient = new HttpSolrClient.Builder(sourceCoreUrl).build();
+            List<Map<String, Object>> dataList;
+            try {
+                // パターン1: {"data": [...]} 形式を試す
+                Map<String, Object> jsonData = mapper.readValue(
+                    new File(config.getGroundTruthJsonPath()),
+                    new TypeReference<Map<String, Object>>() {}
+                );
+                dataList = (List<Map<String, Object>>) jsonData.get("data");
+            } catch (Exception e) {
+                // パターン2: [...] 配列形式を試す
+                dataList = mapper.readValue(
+                    new File(config.getGroundTruthJsonPath()),
+                    new TypeReference<List<Map<String, Object>>>() {}
+                );
+            }
+            System.out.println("✅ " + dataList.size() + "件のデータを読み込みました");
+            
+            // クエリ生成方法の表示
+            if (config.isUseOriginalQuery()) {
+                System.out.println("🔍 クエリ生成: 元の文章をそのまま使用");
+            } else {
+                System.out.println("🔍 クエリ生成: 分かち書き + 品詞フィルタ (" + 
+                    String.join(", ", config.getQueryPartOfSpeech()) + ")");
+            }
 
             // 時間計測開始
             long startTime = System.currentTimeMillis();
-
-            // questionフィールドが存在するドキュメントのみ取得
-            SolrQuery query = new SolrQuery("question:* AND is_chunk:false");
-            query.setRows(config.getNumRows());
-            QueryResponse response = sourceClient.query(query);
-            SolrDocumentList docs = response.getResults();
 
             List<LinkedHashMap<String, Object>> evaluationResults = new ArrayList<>();
 
@@ -107,8 +116,8 @@ public class Main {
             
             try {
                 // バッチサイズ（例: 20件ずつ処理）
-                int batchSize = 20;
-                int totalDocs = docs.size();
+                int batchSize = 10;
+                int totalDocs = Math.min(dataList.size(), config.getNumRows());
                 
                 for (int batchStart = 0; batchStart < totalDocs; batchStart += batchSize) {
                     int batchEnd = Math.min(batchStart + batchSize, totalDocs);
@@ -118,34 +127,34 @@ public class Main {
                     List<Future<LinkedHashMap<String, Object>>> futures = new ArrayList<>();
                     
                     for (int i = batchStart; i < batchEnd; i++) {
-                        final SolrDocument doc = docs.get(i);
+                        final Map<String, Object> dataItem = dataList.get(i);
                         final int index = i;
                         final int finalTotalDocs = totalDocs;
                         
                         Future<LinkedHashMap<String, Object>> future = executorService.submit(new Callable<LinkedHashMap<String, Object>>() {
                             @Override
                             public LinkedHashMap<String, Object> call() throws Exception {
-                                final String question = (String) doc.getFirstValue("question");
-                                final String docId = (String) doc.getFirstValue("original_doc_id");
-                                final String title = (String) doc.getFirstValue("title");
+                                final String question = (String) dataItem.get("question");
+                                final String rawDocId = (String) dataItem.get("id");
+                                final String title = (String) dataItem.get("title");
 
-                                // クエリトークンの決定: TF-IDFランキング優先設定が有効ならTF-IDFから取得、無効なら従来の分かち書き
-                                final String[] splittedQuestionList;
-                                if (config.getRankChoiceWordNumFromTop() > 0) {
-                                    int n = config.getRankChoiceWordNumFromTop();
-                                    List<String> topWords = TFIDF_RANKING.getTopWords(docId, n);
-                                    if (topWords == null || topWords.isEmpty()) {
-                                        // フォールバック: 従来の分かち書き
-                                        System.out.println("警告: 文書ID \"" + docId + "\" のTF-IDFランキングデータが見つかりません。従来の分かち書きを使用します。");
-                                        splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
-                                    } else {
-                                        System.out.println("[" + (index+1) + "/" + finalTotalDocs + "] TF-IDFから上位" + topWords.size() + "語を取得: " + String.join(", ", topWords));
-                                        splittedQuestionList = topWords.toArray(new String[0]);
-                                    }
+                                // ID形式を変換: de-001-00-000 → de-001
+                                final String docId = convertDocId(rawDocId);
+                                
+                                // クエリ生成: 設定に応じて元の文章 or 分かち書き
+                                final String[] queryTokens;
+                                if (config.isUseOriginalQuery()) {
+                                    // 元の文章をそのまま使用
+                                    queryTokens = new String[]{question};
                                 } else {
-                                    splittedQuestionList = WordSplitter.getSplittedWords(question, config.getPartOfSpeech(), config.getChoiceWordNumFromTop());
+                                    // 分かち書き + 品詞フィルタ
+                                    queryTokens = WordSplitter.getSplittedWords(
+                                        question, 
+                                        config.getQueryPartOfSpeech(), 
+                                        config.getChoiceWordNumFromTop()
+                                    );
                                 }
-                                final String[] paraphraseQuestionList = OpenAIUseLLM.paraphraseTopN(splittedQuestionList, config.getParaphraseWordNumFromTop());
+                                final String[] paraphraseQuestionList = OpenAIUseLLM.paraphraseTopN(queryTokens, config.getParaphraseWordNumFromTop());
                                 
                                 // 検索実行
                                 SolrDocumentList searchResults;
@@ -199,14 +208,17 @@ public class Main {
                                 // final変数として再定義
                                 final SolrDocumentList finalSlicedSearchResults = slicedSearchResults;
                                 final String finalSearchParams = searchParams;
+                                final String[] finalQueryTokens = queryTokens;
 
                                 // 結果を保存
                                 LinkedHashMap<String, Object> resultMap = new LinkedHashMap<String, Object>() {{
+                                    put("index", index + 1);
                                     put("correctId", docId);
+                                    put("rawId", rawDocId);
                                     put("title", title);
                                     put("question", question);
                                     put("params", finalSearchParams);
-                                    put("splittedQuestion", splittedQuestionList);
+                                    put("splittedQuestion", finalQueryTokens);
                                     put("paraphraseQuestion", paraphraseQuestionList);
                                     put("numFound", finalSlicedSearchResults.getNumFound());
                                     put("coverage", evalResult.getCoverage());
@@ -224,12 +236,31 @@ public class Main {
                     System.out.println("  → Submitted " + futures.size() + " search tasks");
                     
                     // Phase 2: 結果を収集（順序保持）
-                    for (Future<LinkedHashMap<String, Object>> future : futures) {
-                        LinkedHashMap<String, Object> resultMap = future.get();
+                    System.out.println("\n📊 結果取得中...");
+                    for (int i = 0; i < futures.size(); i++) {
+                        LinkedHashMap<String, Object> resultMap = futures.get(i).get();
                         evaluationResults.add(resultMap);
+                        
+                        // 結果表示
+                        int idx = (int) resultMap.get("index");
+                        String question = (String) resultMap.get("question");
+                        String docId = (String) resultMap.get("correctId");
+                        String rawId = (String) resultMap.get("rawId");
+                        String[] tokens = (String[]) resultMap.get("splittedQuestion");
+                        double coverage = (double) resultMap.get("coverage");
+                        double mrr = (double) resultMap.get("mrr");
+                        
+                        String queryPreview = config.isUseOriginalQuery() 
+                            ? question.substring(0, Math.min(40, question.length())) + "..."
+                            : String.join(", ", tokens);
+                        
+                        System.out.println(String.format(
+                            "  [%3d/%3d] %s → %s | Cov: %.2f | MRR: %.2f | %s",
+                            idx, totalDocs, rawId, docId, coverage, mrr, queryPreview
+                        ));
                     }
                     
-                    System.out.println("  ✓ Processed documents: " + evaluationResults.size() + "/" + totalDocs);
+                    System.out.println("  ✅ Processed documents: " + evaluationResults.size() + "/" + totalDocs);
                 }
             } finally {
                 executorService.shutdown();
@@ -338,5 +369,26 @@ public class Main {
             slicedList.add(docs.get(i));
         }
         return slicedList;
+    }
+
+    /**
+     * ID形式を変換: de-001-00-000 → de-001
+     * @param rawId 元のID（例: de-001-00-000）
+     * @return 変換後のID（例: de-001）
+     */
+    private static String convertDocId(String rawId) {
+        if (rawId == null || rawId.isEmpty()) {
+            return rawId;
+        }
+        
+        // パターン: prefix-XXX-YY-ZZZ → prefix-XXX
+        String[] parts = rawId.split("-");
+        if (parts.length >= 2) {
+            // 最初の2つの部分を結合
+            return parts[0] + "-" + parts[1];
+        }
+        
+        // 変換できない場合はそのまま返す
+        return rawId;
     }
 }

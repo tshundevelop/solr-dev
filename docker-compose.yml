@@ -38,6 +38,7 @@ services:
     ports:
       - "5000:5000"
     container_name: python
+    tty: true
     volumes:
       - type: bind
         source: ./python

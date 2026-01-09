@@ -59,6 +59,7 @@
                     <!-- <mainClass>BuildQuestionWordSimilarity</mainClass> -->
                     <!-- <mainClass>JaQuADToSolr</mainClass> -->
                     <!-- <mainClass>QuestionWordFrequency</mainClass> -->
+                    <!-- <mainClass>WMD</mainClass> -->
                 </configuration>
             </plugin>
         </plugins>
