@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
+import java.util.ArrayList;
 import java.nio.charset.StandardCharsets;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -187,9 +188,182 @@ public class OpenAIEmbeddingClient {
                 return getEmbeddingWithRetry(text, apiKey, retryCount + 1);
             }
 
+            // HTTP 400エラー（トークン数超過）の場合は分割して平均化
+            if (responseCode == 400 && errorBody.contains("maximum context length")) {
+                System.err.println("⚠️ Token limit exceeded, splitting text and averaging embeddings...");
+                return getEmbeddingBySplitting(text, apiKey);
+            }
+
             System.err.println("OpenAI APIからのエラー (HTTP " + responseCode + ")");
             System.err.println("エラーボディ: " + errorBody);
             return null;
         }
+    }
+    
+    /**
+     * テキストを分割して埋め込みベクトルを平均化
+     * 8192トークン制限を超える場合に使用
+     */
+    private static List<Double> getEmbeddingBySplitting(String text, String apiKey) throws Exception {
+        // 「。」で分割
+        String[] sentences = text.split("。");
+        List<String> chunks = new ArrayList<>();
+        StringBuilder currentChunk = new StringBuilder();
+        int maxChunkLength = 2000; // 約2000文字（より安全なサイズ）
+        
+        for (int i = 0; i < sentences.length; i++) {
+            String sentence = sentences[i].trim();
+            if (sentence.isEmpty()) continue;
+            
+            // 「。」を復元
+            if (i < sentences.length - 1) {
+                sentence = sentence + "。";
+            }
+            
+            // チャンクサイズチェック
+            if (currentChunk.length() + sentence.length() > maxChunkLength && currentChunk.length() > 0) {
+                chunks.add(currentChunk.toString());
+                currentChunk = new StringBuilder();
+            }
+            
+            if (currentChunk.length() > 0) {
+                currentChunk.append(" ");
+            }
+            currentChunk.append(sentence);
+        }
+        
+        // 最後のチャンク
+        if (currentChunk.length() > 0) {
+            chunks.add(currentChunk.toString());
+        }
+        
+        if (chunks.isEmpty()) {
+            System.err.println("❌ Failed to split text into chunks");
+            return null;
+        }
+        
+        System.err.println("📝 Split into " + chunks.size() + " chunks for embedding");
+        
+        // 各チャンクのembeddingを取得（再帰を避けるため直接API呼び出し）
+        List<List<Double>> allEmbeddings = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            String chunk = chunks.get(i);
+            System.err.println("   → Processing chunk " + (i+1) + "/" + chunks.size() + " (" + chunk.length() + " chars)");
+            
+            // チャンクがまだ大きすぎる場合は文字数で強制分割
+            if (chunk.length() > 2000) {
+                System.err.println("   ⚠️ Chunk still too large, splitting by character count");
+                int subChunkSize = 1500;
+                for (int start = 0; start < chunk.length(); start += subChunkSize) {
+                    int end = Math.min(start + subChunkSize, chunk.length());
+                    String subChunk = chunk.substring(start, end);
+                    List<Double> embedding = getEmbeddingDirect(subChunk, apiKey);
+                    if (embedding != null) {
+                        allEmbeddings.add(embedding);
+                    }
+                }
+            } else {
+                List<Double> embedding = getEmbeddingDirect(chunk, apiKey);
+                if (embedding != null) {
+                    allEmbeddings.add(embedding);
+                }
+            }
+        }
+        
+        if (allEmbeddings.isEmpty()) {
+            System.err.println("❌ Failed to get embeddings for any chunk");
+            return null;
+        }
+        
+        // ベクトルを平均化
+        int dimensions = allEmbeddings.get(0).size();
+        List<Double> averagedEmbedding = new ArrayList<>(dimensions);
+        
+        for (int i = 0; i < dimensions; i++) {
+            double sum = 0.0;
+            for (List<Double> embedding : allEmbeddings) {
+                sum += embedding.get(i);
+            }
+            averagedEmbedding.add(sum / allEmbeddings.size());
+        }
+        
+        System.err.println("✅ Successfully averaged " + allEmbeddings.size() + " chunk embeddings");
+        return averagedEmbedding;
+    }
+    
+    /**
+     * 直接API呼び出し（リトライのみ、分割処理なし）
+     * 無限再帰を防ぐため、getEmbeddingBySplittingから呼ばれる
+     */
+    private static List<Double> getEmbeddingDirect(String text, String apiKey) throws Exception {
+        int maxRetries = 5;
+        
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                // Rate limit防止
+                preventRateLimit();
+                
+                URL url = new URL(OPENAI_API_URL);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+                conn.setDoOutput(true);
+
+                ObjectNode payload = objectMapper.createObjectNode();
+                payload.put("model", EMBEDDING_MODEL);
+                payload.put("input", text);
+                String requestBody = objectMapper.writeValueAsString(payload);
+
+                try (OutputStreamWriter writer = new OutputStreamWriter(conn.getOutputStream(), StandardCharsets.UTF_8)) {
+                    writer.write(requestBody);
+                }
+
+                int responseCode = conn.getResponseCode();
+
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                        StringBuilder responseBuilder = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            responseBuilder.append(line);
+                        }
+                        String jsonResponse = responseBuilder.toString();
+
+                        JsonNode rootNode = objectMapper.readTree(jsonResponse);
+                        JsonNode embeddingNode = rootNode.path("data").path(0).path("embedding");
+
+                        if (embeddingNode.isArray()) {
+                            return objectMapper.convertValue(
+                                embeddingNode,
+                                objectMapper.getTypeFactory().constructCollectionType(List.class, Double.class)
+                            );
+                        }
+                    }
+                } else if (responseCode == 429) {
+                    // Rate limitの場合のみリトライ
+                    long waitTime = 5000L * (1L << Math.min(attempt, 4));
+                    System.err.println("   🔄 Rate limit (attempt " + (attempt + 1) + "), waiting " + (waitTime/1000) + "s");
+                    Thread.sleep(waitTime);
+                    continue;
+                } else {
+                    // その他のエラーは分割済みなのでnullを返す
+                    String errorBody = "";
+                    try (BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()))) {
+                        errorBody = errorReader.lines().reduce("", String::concat);
+                    } catch (IOException ignored) {}
+                    System.err.println("   ❌ API error " + responseCode + " for direct call: " + errorBody);
+                    return null;
+                }
+            } catch (Exception e) {
+                System.err.println("   ⚠️ Error in direct call (attempt " + (attempt + 1) + "): " + e.getMessage());
+                if (attempt < maxRetries - 1) {
+                    Thread.sleep(2000);
+                }
+            }
+        }
+        
+        return null;
     }
 }

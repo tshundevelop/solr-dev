@@ -23,6 +23,7 @@ QuestionWordFrequency$WordInfo.class
 Main$3$1.class
 Config.class
 WordSplitter.class
+RealDataChunkTest.class
 QuestionTokenRanking$TokenInfo.class
 OpenAIUseLLM.class
 Main$3.class

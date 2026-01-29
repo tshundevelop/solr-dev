@@ -8,6 +8,7 @@
 /app/java/src/main/java/WordSplitter.java
 /app/java/src/main/java/OpenAIEmbeddingClient.java
 /app/java/src/main/java/TFIDFWordRanking.java
+/app/java/src/main/java/RealDataChunkTest.java
 /app/java/src/main/java/HybridSearch.java
 /app/java/src/main/java/JaQuADToSolr.java
 /app/java/src/main/java/QuestionTokenRanking.java

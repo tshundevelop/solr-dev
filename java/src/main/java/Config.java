@@ -28,7 +28,7 @@ public class Config {
 
     public Config() {
         // デフォルト値の設定
-        this.coreName = "production_split-4000";
+        this.coreName = "production_split-1000";
         // this.type は Main.java のループ内で searchTypes から設定される
         this.numRows = 10000;
         this.topk = 10;
@@ -42,11 +42,11 @@ public class Config {
         this.rankChoiceWordNumFromTop = 3; // 0以下なら無効（従来の分かち書き使用）
         this.paraphraseWordNumFromTop = 3; // パラフレーズ無効（TF-IDF単語のみ使用）
         this.fieldSearchMethodType = "OR";
-        this.resultFolderName = "word_chunk_rephrase"; // デフォルトの結果フォルダ名
+        this.resultFolderName = "word_chunk1000_rephrase"; // デフォルトの結果フォルダ名
         this.groundTruthJsonPath = "data/jaquad_validation_3939.json";
         this.useOriginalQuery = false; // デフォルトは分かち書き
         this.queryPartOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
-        this.searchTypes = new String[]{"hybrid"};
+        this.searchTypes = new String[]{"embedding"};
     }
 
     // getter/setterメソッド    

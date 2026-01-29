@@ -46,27 +46,6 @@ services:
     networks:
       - my_network
 
-  viewer:
-    build:
-      context: .
-      dockerfile: ./python/Dockerfile
-    working_dir: /app/python
-    command: ["streamlit", "run", "view_results.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
-    ports:
-      - "8501:8501"
-    container_name: viewer
-    volumes:
-      - type: bind
-        source: ./python
-        target: /app/python
-      - type: bind
-        source: ./java
-        target: /app/java
-    depends_on:
-      - java
-    networks:
-      - my_network
-
 networks:
   my_network:
     driver: bridge

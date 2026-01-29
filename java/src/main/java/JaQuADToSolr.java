@@ -37,9 +37,18 @@ public class JaQuADToSolr {
     private static final String OUTPUT_DIR = "data/embedding";
     private static final String PARENT_DOCS_DIR = "data/embedding/parent_docs";  // 親ドキュメント保存先
     private static final String SOLR_URL = "http://solr:8983/solr";
-    private static final String CORE_NAME = "production_split-4000";  // 任意のコア名を指定
-    private static final int CHUNK_SIZE = 4000;  // チャンキングする文字数（０の場合はチャンキングしない）
+    private static final String CORE_NAME = "production_split-semchunk4";  // 任意のコア名を指定
+    private static final int CHUNK_SIZE = 1000;  // チャンキングする文字数（０の場合はチャンキングしない、fixedモード用）
     private static final int BATCH_SIZE = 100;  // バッチサイズ（この件数ごとにSolrに送信）
+    
+    // チャンキングモード: "fixed" = 固定文字数、"section" = セクション区切り
+    private static final String CHUNK_MODE = "section";  // "fixed" or "section"
+    
+    // セクションモード用: 前後に結合するセクション数（0=オーバーラップなし、1=前後1セクションずつ）
+    private static final int OVERLAP_SECTIONS = 4;
+    
+    // 最小チャンク文字数（これ以下のチャンクは除外される）
+    private static final int MIN_CHUNK_SIZE = 100;
     
     // セクション分割用セパレーター（nullの場合は文単位分割、設定時はカスタム分割）
     private static final String SECTION_SEPARATOR = "。";  // 例: "\n\n", ",", "---" など
@@ -378,11 +387,17 @@ public class JaQuADToSolr {
         String title = record.get("title").asText();
         String context = record.get("context").asText();
         
-        // コンテキストをチャンキング
+        // チャンキングモードに応じて分割
+        List<String> chunks;
+        if ("section".equals(CHUNK_MODE)) {
+            chunks = splitIntoSectionChunks(context);
+        } else {
+            chunks = splitIntoFixedChunks(context, CHUNK_SIZE);
+        }
+        
+        // 各チャンクをドキュメント化
         int chunkCount = 0;
-        for (int start = 0; start < context.length(); start += CHUNK_SIZE) {
-            int end = Math.min(start + CHUNK_SIZE, context.length());
-            String chunkText = context.substring(start, end);
+        for (String chunkText : chunks) {
             chunkCount++;
             
             final String chunkId = id + "-" + chunkCount;
@@ -443,6 +458,79 @@ public class JaQuADToSolr {
         }
         
         return chunkDocs;
+    }
+    
+    /**
+     * セクションベースでチャンキング（「。\n\n」で区切り、前後のセクションを結合）
+     */
+    private List<String> splitIntoSectionChunks(String text) {
+        List<String> chunks = new ArrayList<>();
+        
+        // 「。\n\n」（句点 + 改行2つ）でセクション分割
+        String[] sections = text.split("。\\s*\\n\\s*\\n");
+        List<String> sectionList = new ArrayList<>();
+        
+        for (int i = 0; i < sections.length; i++) {
+            String section = sections[i].trim();
+            
+            // 空セクションをスキップ
+            if (section.isEmpty()) {
+                continue;
+            }
+            
+            // セクションの末尾に「。」を復元（最後のセクション以外）
+            if (i < sections.length - 1 && !section.endsWith("。")) {
+                section = section + "。";
+            }
+            
+            sectionList.add(section);
+        }
+        
+        // セクションが1つもない場合は全体を1チャンクとして扱う
+        if (sectionList.isEmpty()) {
+            chunks.add(text);
+            return chunks;
+        }
+        
+        // 各セクションを中心に、前後OVERLAP_SECTIONSセクションを結合
+        for (int i = 0; i < sectionList.size(); i++) {
+            StringBuilder chunkBuilder = new StringBuilder();
+            
+            // 開始位置と終了位置を計算
+            int start = Math.max(0, i - OVERLAP_SECTIONS);
+            int end = Math.min(sectionList.size() - 1, i + OVERLAP_SECTIONS);
+            
+            // セクションを結合
+            for (int j = start; j <= end; j++) {
+                if (chunkBuilder.length() > 0) {
+                    chunkBuilder.append("\n\n");
+                }
+                chunkBuilder.append(sectionList.get(j));
+            }
+            
+            String chunk = chunkBuilder.toString();
+            
+            // 最小文字数以上のチャンクのみ追加
+            if (chunk.length() >= MIN_CHUNK_SIZE) {
+                chunks.add(chunk);
+            }
+        }
+        
+        return chunks;
+    }
+    
+    /**
+     * 固定文字数でチャンキング（従来の方法）
+     */
+    private List<String> splitIntoFixedChunks(String text, int chunkSize) {
+        List<String> chunks = new ArrayList<>();
+        
+        for (int start = 0; start < text.length(); start += chunkSize) {
+            int end = Math.min(start + chunkSize, text.length());
+            chunks.add(text.substring(start, end));
+        }
+        
+        return chunks;
     }
     
     /**

@@ -70,8 +70,8 @@ public class Evaluation {
 
         // 検索結果の中に正解IDが含まれているかチェック
         for (SolrDocument doc : searchResults) {
-            String docId = (String) doc.getFirstValue("original_doc_id");
-            if (docId.equals(correctId)) {
+            String docId = getDocumentId(doc);
+            if (docId != null && docId.equals(correctId)) {
                 score = 1.0;
                 break;
             }
@@ -84,8 +84,8 @@ public class Evaluation {
 
         for (int i = 0; i < searchResults.size(); i++) {
             SolrDocument doc = searchResults.get(i);
-            String docId = (String) doc.getFirstValue("original_doc_id");
-            if (docId.equals(correctId)) {
+            String docId = getDocumentId(doc);
+            if (docId != null && docId.equals(correctId)) {
                 score = 1.0 / (i + 1);
                 break;
             }
@@ -99,16 +99,29 @@ public class Evaluation {
 
         for (int i = 0; i < searchResults.size(); i++) {
             SolrDocument doc = searchResults.get(i);
-            String docId = (String) doc.getFirstValue("original_doc_id");
-            if (docId.equals(correctId)) {
+            String docId = getDocumentId(doc);
+            if (docId != null && docId.equals(correctId)) {
                 relevantCount++;
                 totalScore += (double) relevantCount / (i + 1);
                 return totalScore / relevantCount;
-            } else if (docId.split("-")[1].equals(correctId.split("-")[1])) {
+            } else if (docId != null && docId.split("-").length > 1 && correctId.split("-").length > 1 &&
+                       docId.split("-")[1].equals(correctId.split("-")[1])) {
                 relevantCount++;
                 totalScore += (double) relevantCount / (i + 1);
             }
         }
         return 0.0;
+    }
+
+    /**
+     * ドキュメントIDを取得するヘルパーメソッド
+     * original_doc_idがあればそれを使用、なければidを使用
+     */
+    private static String getDocumentId(SolrDocument doc) {
+        String docId = (String) doc.getFirstValue("original_doc_id");
+        if (docId == null) {
+            docId = (String) doc.getFirstValue("id");
+        }
+        return docId;
     }
 }
