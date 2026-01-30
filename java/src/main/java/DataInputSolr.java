@@ -35,7 +35,7 @@ public class DataInputSolr {
     private static final String OUTPUT_DIR = "data/embedding";
     private static final String PARENT_DOCS_DIR = "data/embedding/parent_docs";  // 親ドキュメント保存先
     private static final String SOLR_URL = "http://solr:8983/solr";
-    private static final String CORE_NAME = "production_split-semchunk4";  // 任意のコア名を指定
+    private static final String CORE_NAME = "test_core";  // 任意のコア名を指定
     private static final int CHUNK_SIZE = 1000;  // チャンキングする文字数（０の場合はチャンキングしない、fixedモード用）
     private static final int BATCH_SIZE = 100;  // バッチサイズ（この件数ごとにSolrに送信）
     
