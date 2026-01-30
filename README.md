@@ -154,23 +154,39 @@ summary.json：configのパラメータと検索評価精度が含まれる
 solr-dev/
 ├── docker-compose.yml          # Docker構成
 ├── Makefile                    # 便利なコマンド集
-├── test_setup.sh              # 包括的テストスクリプト
+├── test_setup.sh               # 包括的テストスクリプト
 ├── README.md                   # このファイル
+├── .gitignore
 ├── data/
-│   ├── sample_data.json       # サンプルデータ
+│   ├── sample_data.json      # サンプルデータ
 │   ├── schema/
 │   │   └── schema.json       # Solrスキーマ定義
-│   ├── jaquad/               # JaQuADデータセット
-│   └── wikipedia_ja/         # Wikipediaデータ
 ├── scripts/
 │   ├── create_solr_core.sh   # コア作成スクリプト
 │   └── delete_solr_core.sh   # コア削除スクリプト
-├── java/                      # Javaクライアント
-│   ├── pom.xml
-│   ├── api_key.env           # OpenAI APIキー設定
+├── java/                     # Javaクライアント
+│   ├── Dockerfile
+│   ├── pom.xml               # 依存関係定義
+│   ├── api_key.env           # OpenAI APIキー設定（自分で作成する）
 │   └── src/main/java/        # Javaソースコード
-└── python/                    # Pythonクライアント
+│       ├── Config.java                      # 検索設定クラス
+│       ├── Main.java                        # メイン
+│       ├── DataInputSolr.java               # データ投入
+│       ├── EmbedSearch.java                 # ベクトル検索
+│       ├── KeywordSearch.java               # キーワード検索
+│       ├── HybridSearch.java                # ハイブリッド検索
+│       ├── DataInputSolr.java               # データ投入
+│       ├── DotEnvLoader.java                # 環境変数ローダー
+│       ├── EmbeddingClient.java             # pythonからベクトル埋め込み取得通信
+│       ├── WordSplitter.java                # 分ち書き
+│       ├── Evaluation.java                  # 評価実行クラス
+│       ├── EvaluationResult.java            # 評価データ格納クラス
+│       ├── OpenAIUseLLM.java                # クエリ書き換え
+│       └── OpenAIEmbeddingClient.java       # OpenAI埋め込みクライアント
+└── python/                   # Pythonクライアント
+    ├── Dockerfile
     ├── app.py                # Flask API
+    ├── embeddder.py          # ベクトル埋め込み作成
     └── requirements.txt
 ```
 

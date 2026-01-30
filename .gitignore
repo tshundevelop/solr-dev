@@ -493,6 +493,7 @@ java/Result/
 java/*.env
 java/cache/
 java/data/
+java/boff
 todo
 make_data_prog/
 data/jaquad/
