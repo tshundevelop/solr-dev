@@ -105,9 +105,48 @@ make run
 
 検索結果はResult/searchType/resultsFolderNameに保存され以下の３つのjsonファイルが作成される。
 
-- results.json：各クエリに対する検索結果が全て含まれる
-- status.json：正解・不正解したデータのIDが含まれる
-- summary.json：configのパラメータと検索評価精度が含まれる
+results.json：各クエリに対する検索結果が全て含まれる
+
+```json
+[
+    {
+        "id": "1",
+        // :
+        // :
+    },
+    {
+        "id": "2",
+        // :
+        // :
+    }
+]
+```
+
+status.json：正解・不正解したデータのIDが含まれる
+
+```json
+{
+    "correct": ["id1", "id2"], // 正解ID群
+    "incorrect": ["id3", "id4"] //不正解ID群
+}
+```
+
+summary.json：configのパラメータと検索評価精度が含まれる
+
+```json
+{
+  "data" : "20260122_142102", // 日時
+  "durationMs" : 5941099, // 実行時間
+  "configuration" : {
+    // :
+  },
+  "results": {
+    "totalDocumentsProcessed" : 3939, // 検索クエリ数
+    "averageCoverage" : "0.5", // 網羅率
+    "averageMrr" : "0.2" // 平均順位の逆数
+  }
+}
+```
 
 ## プロジェクト構成
 
