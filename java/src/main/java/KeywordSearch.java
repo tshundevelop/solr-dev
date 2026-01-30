@@ -12,18 +12,20 @@ public class KeywordSearch {
     public static void main(String[] args) {
         // 引数があればそれを使う
         String keyword;
+        String coreName;
         try {
-            keyword = args[0];
+            keyword = args[1];
+            coreName = args[0];
         } catch (Exception e) {
-            System.out.println("No argument found. Using default keyword.");
-            keyword = "ヨロイザメの肝油が多く含まれている部位はどこ?";
+            System.out.println("Not found. Kyeword and coreName. Stopping...");
+            return;
         }
 
         String[] keywordList = WordSplitter.getSplittedWords(keyword, new String[]{"名詞", "動詞", "形容詞"}, 3);
 
         // is_chunk = false のドキュメントを検索
         Object[] resultsNonChunkObj = getKeywordSearchResultWithChunkFilter(
-            "validation2000",
+            coreName,
             keywordList,
             "id,original_doc_id,title,context,score",
             "context",
@@ -34,14 +36,18 @@ public class KeywordSearch {
         System.out.println("\n=== Results for is_chunk=false ===");
         SolrDocumentList resultsNonChunk = (SolrDocumentList) resultsNonChunkObj[0];
         resultsNonChunk = Main.sliceSolrDocumentList(resultsNonChunk, 10);
-        for (SolrDocument result : resultsNonChunk) {
-            System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
-            System.out.println("title: " + result.getFieldValue("title"));
+        if (resultsNonChunk.size() == 0) {
+            System.out.println("No results found for is_chunk=false.");
+        } else{
+            for (SolrDocument result : resultsNonChunk) {
+                System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
+                System.out.println("title: " + result.getFieldValue("title"));
+            }
         }
 
         // is_chunk = true のドキュメントを検索
         Object[] resultsChunkObj = getKeywordSearchResultWithChunkFilter(
-            "validation2000",
+            coreName,
             keywordList,
             "id,original_doc_id,title,context,score",
             "context",
@@ -52,9 +58,13 @@ public class KeywordSearch {
         System.out.println("\n=== Results for is_chunk=true ===");
         SolrDocumentList resultsChunk = (SolrDocumentList) resultsChunkObj[0];
         resultsChunk = Main.sliceSolrDocumentList(resultsChunk, 10);
-        for (SolrDocument result : resultsChunk) {
-            System.out.println("Chunk ID: " + result.getFieldValue("id") + ", Original Doc ID: " + result.getFieldValue("original_doc_id") + ", Score: " + result.getFieldValue("score"));
-            System.out.println("title: " + result.getFieldValue("title"));
+        if (resultsChunk.size() == 0) {
+            System.out.println("No results found for is_chunk=true.");
+        } else {
+            for (SolrDocument result : resultsChunk) {
+                System.out.println("Chunk ID: " + result.getFieldValue("id") + ", Original Doc ID: " + result.getFieldValue("original_doc_id") + ", Score: " + result.getFieldValue("score"));
+                System.out.println("title: " + result.getFieldValue("title"));
+            }
         }
     }
 
@@ -86,9 +96,6 @@ public class KeywordSearch {
             QueryResponse response = queryRequest.process(solr);
 
             SolrDocumentList docs = response.getResults();
-
-            // 検索クエリ表示
-            System.out.println(params);
 
             return new Object[]{docs, params};
         } catch (Exception e) {

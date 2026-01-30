@@ -16,10 +16,13 @@ public class HybridSearch {
 
     public static void main(String[] args) {
         String keyword;
+        String coreName;
         try {
-            keyword = args[0];
+            keyword = args[1];
+            coreName = args[0];
         } catch (Exception e) {
-            keyword = "芥川賞を受賞した人は誰ですか。";
+            System.out.println("Not found. Kyeword and coreName. Stopping...");
+            return;
         }
 
         String apiKey = "";
@@ -42,7 +45,7 @@ public class HybridSearch {
         try {
             // is_chunk = false のドキュメントを検索
             Object[] resultsNonChunkObj = getHybridSearchResultWithChunkFilter(
-                "validation2000",
+                coreName,
                 keywordList,
                 "context_vector",
                 "context",
@@ -55,7 +58,9 @@ public class HybridSearch {
             System.out.println("\n=== Results for is_chunk=false ===");
             SolrDocumentList resultsNonChunk = (SolrDocumentList) resultsNonChunkObj[0];
             resultsNonChunk = Main.sliceSolrDocumentList(resultsNonChunk, 10);
-            if (resultsNonChunk != null) {
+            if (resultsNonChunk.size() == 0) {
+                System.out.println("No results found for is_chunk=false.");
+            } else {
                 for (SolrDocument result : resultsNonChunk) {
                     System.out.println("ID: " + result.getFieldValue("id") + ", Score: " + result.getFieldValue("score"));
                     System.out.println("title: " + result.getFieldValue("title"));
@@ -64,7 +69,7 @@ public class HybridSearch {
 
             // is_chunk = true のドキュメントを検索
             Object[] resultsChunkObj = getHybridSearchResultWithChunkFilter(
-                "validation2000",
+                coreName,
                 keywordList,
                 "chunk_vector",
                 "context",
@@ -77,7 +82,9 @@ public class HybridSearch {
             System.out.println("\n=== Results for is_chunk=true ===");
             SolrDocumentList resultsChunk = (SolrDocumentList) resultsChunkObj[0];
             resultsChunk = Main.sliceSolrDocumentList(resultsChunk, 10);
-            if (resultsChunk != null) {
+            if (resultsChunk.size() == 0) {
+                System.out.println("No results found for is_chunk=true.");
+            } else {
                 for (SolrDocument result : resultsChunk) {
                     System.out.println("Chunk ID: " + result.getFieldValue("id") + ", Original Doc ID: " + result.getFieldValue("original_doc_id") + ", Score: " + result.getFieldValue("score"));
                     System.out.println("title: " + result.getFieldValue("title"));

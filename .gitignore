@@ -489,9 +489,11 @@ command.txt
 get_data.py
 make_vector_json.py
 .vscode
-data/
 java/Result/
 java/*.env
 java/cache/
+java/data/
 todo
-*.py
+make_data_prog/
+data/jaquad/
+data/wikipedia_ja/

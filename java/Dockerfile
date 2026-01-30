@@ -1,12 +1,14 @@
-FROM openjdk:22-slim
+FROM eclipse-temurin:22-jdk-jammy
 
-WORKDIR /app
+WORKDIR /app/java
 
 RUN apt -y update && apt -y upgrade
 RUN apt -y install maven
 
-COPY . .
-
-WORKDIR /app/java
+# 必要なファイルのみをコピー
+COPY java/pom.xml .
+COPY java/src ./src
+COPY java/userDic.csv ./userDic.csv
+COPY java/api_key.env ./api_key.env
 
 RUN mvn compile
