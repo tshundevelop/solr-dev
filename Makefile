@@ -23,8 +23,6 @@ help:
 	@echo "Solr操作:"
 	@echo "  make cores       - Solrコアの一覧を表示"
 	@echo "  make search      - 検索を実行 (Q=<query> CORE_NAME=<name>)"
-	@echo "  make core-create - コアを作成 (CORE_NAME=<name>)"
-	@echo "  make core-delete - コアを削除 (CORE_NAME=<name>)"
 	@echo ""
 	@echo "開発:"
 	@echo "  make java-shell  - Javaコンテナに入る"
@@ -33,6 +31,8 @@ help:
 	@echo ""
 	@echo "クリーンアップ:"
 	@echo "  make clean       - すべて削除"
+	@echo "  make inputdata   - データをSolrに投入"
+	@echo "  make run         - メイン処理を実行"
 	@echo ""
 
 up:
