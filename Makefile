@@ -73,16 +73,6 @@ cores:
 	@curl -s "$(SOLR_URL)/solr/admin/cores?action=STATUS" | \
 		grep -o '"name":"[^"]*"' | cut -d'"' -f4 | sed 's/^/  - /' || echo "  (コアが見つかりません)"
 
-core-create:
-	@echo "Solrコア '$(CORE_NAME)' を作成しています..."
-	@./scripts/create_solr_core.sh $(CORE_NAME) data/schema/schema.json
-	@echo "コアが作成されました"
-
-core-delete:
-	@echo "Solrコア '$(CORE_NAME)' を削除しています..."
-	@./scripts/delete_solr_core.sh $(CORE_NAME)
-	@echo "コアが削除されました"
-
 Q ?= 日本
 search:
 	@echo "検索: $(Q) (コア: $(CORE_NAME))"
@@ -101,3 +91,9 @@ clean:
 	@echo "すべてのコンテナとボリュームを削除しています..."
 	@docker compose down -v
 	@echo "クリーンアップが完了しました"
+
+inputdata:
+	@docker exec java bash -c "mvn exec:java -Dexec.mainClass=\"DataInputSolr\""
+
+run:
+	@docker exec java bash -c "mvn exec:java -Dexec.mainClass=\"Main\""

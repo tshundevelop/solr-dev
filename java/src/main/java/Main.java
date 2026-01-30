@@ -1,8 +1,3 @@
-import org.apache.solr.client.solrj.SolrClient;
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.impl.HttpSolrClient;
-import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -18,16 +13,21 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.Callable;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.Path;
 
 public class Main {
     private static Config config;
     private static final String PROPERTY_FILE = "api_key.env";
     private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
-    private static final TFIDFWordRanking TFIDF_RANKING = new TFIDFWordRanking();
     
     public static void main(String[] args) {
         config = new Config();
-        
+
+        // フォルダの存在確認と作成
+        ensureResultFoldersExist();
+
         // 実行する検索タイプのリスト（Configから取得）
         String[] searchTypes = config.getSearchTypes();
         
@@ -63,6 +63,22 @@ public class Main {
         System.out.println("\n🎉 全ての検索タイプの評価が完了しました！");
     }
     
+    public static void ensureResultFoldersExist() {
+        String[] folders = {"Result/embedding", "Result/keyword", "Result/hybrid"};
+        for (String folder : folders) {
+            Path path = Paths.get(folder);
+            if (!Files.exists(path)) {
+                try {
+                    Files.createDirectories(path);
+                    System.out.println("📁 フォルダを作成しました: " + folder);
+                } catch (IOException e) {
+                    System.err.println("❌ フォルダ作成に失敗しました: " + folder);
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
     /**
      * 指定された検索タイプで評価を実行
      * @param searchType 検索タイプ（keyword, embedding, hybrid）
@@ -325,7 +341,6 @@ public class Main {
                 put("targetFields", config.getTargetFields());
                 put("partOfSpeech", config.getPartOfSpeech());
                 put("choiceWordNumFromTop", config.getChoiceWordNumFromTop());
-                put("rankChoiceWordNumFromTop", config.getRankChoiceWordNumFromTop());
                 put("paraphraseWordNumFromTop", config.getParaphraseWordNumFromTop());
                 put("fieldSearchMethodType", config.getFieldSearchMethodType());
                 put("isChunk", config.isChunk());

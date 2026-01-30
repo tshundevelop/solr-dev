@@ -1,36 +1,26 @@
-# Solr 検索システム
-
-Apache Solr を使用した日本語文書の検索システムです。キーワード検索、ベクトル検索、ハイブリッド検索に対応しています。
-
 ## 目次
 - [必要要件](#必要要件)
 - [クイックスタート](#クイックスタート)
 - [詳細な使い方](#詳細な使い方)
 - [検索方法](#検索方法)
-- [トラブルシューティング](#トラブルシューティング)
 
-## 必要要件
+## セットアップ
+### OpenAI APIキーの設定
 
-- Docker & Docker Compose
-- 8GB以上のメモリ推奨
-- OpenAI APIキー（ベクトル検索を使用する場合）
+java/api_key.envを作成しOPENAI_API_KEYにAPIキーを設定する
 
-## クイックスタート
-
+## 動作テスト
 ### 自動テストで全機能を確認
 
 ```bash
-# 包括的なテストを実行（推奨）
+# 包括的なテストを実行
 ./test_setup.sh
 
-# 完全にクリーンアップしてテストする場合
-docker compose down -v  # data volumeも削除
-./test_setup.sh
+make test
+make help
 ```
 
-**注意**: `docker compose down -v` を使うと、Solrのdata volumeが削除され、既存のコアとデータもすべて削除されます。本番データがある場合は注意してください。
-
-このスクリプトは以下を自動実行します：
+このスクリプトは以下を自動実行：
 1. ✅ Dockerのビルドと起動
 2. ✅ Solrの起動確認
 3. ✅ サンプルコアの作成
@@ -42,232 +32,82 @@ docker compose down -v  # data volumeも削除
 9. ✅ コアの削除
 10. ✅ Dockerの停止
 
-### Makefileで簡単操作
-
-```bash
-# 利用可能なコマンドを表示
-make help
-
-# テスト実行
-make test
-
-# コンテナ起動
-make up
-
-# 検索実行
-make search Q=東京
-
-# クリーンアップ
-make clean
-```
-
-## 詳細な使い方
-
-### 1. 環境のセットアップ
-
-#### OpenAI APIキーの設定（ベクトル検索に必要）
-
-```bash
-# APIキーを設定
-echo "OPENAI_API_KEY=sk-your-api-key-here" > java/api_key.env
-```
-
-#### コンテナの起動
-
-```bash
-# コンテナをビルドして起動
-docker compose up -d --build
-
-# 起動確認
-docker compose ps
-```
-
-### 2. Solrコアの作成
-
-```bash
-# コアを作成（スキーマファイルを使用）
-./scripts/create_solr_core.sh my_core data/schema/schema.json
-```
-
-### 3. データの投入
-
-#### JSONファイルから投入
-
-```bash
-# サンプルデータを投入
-curl -X POST -H "Content-Type: application/json" \
-  "http://localhost:8983/solr/my_core/update?commit=true" \
-  --data-binary "@data/sample_data.json"
-
-# JaQuADデータを投入
-curl -X POST -H "Content-Type: application/json" \
-  "http://localhost:8983/solr/my_core/update?commit=true" \
-  --data-binary "@data/JaQuAD_dev_all.json"
-```
-
-#### Javaクライアントから投入
-
-```bash
-docker exec -it java bash
-cd /app/java
-mvn clean compile
-mvn exec:java -Dexec.mainClass="JaQuADToSolr" \
-  -Dexec.args="my_core /app/data/jaquad/processed/jaquad_production_792.json"
-exit
-```
-
-## 検索方法
-
-### Web UIでの検索
+### Web UI
 
 ブラウザで Solr Admin UI にアクセス：
 ```
 http://localhost:8983/solr/
 ```
 
-### curlでの検索
-
-#### キーワード検索
-
-```bash
-# 基本的な検索
-curl "http://localhost:8983/solr/my_core/select?q=東京&wt=json&indent=true"
-
-# フィールド指定検索
-curl "http://localhost:8983/solr/my_core/select?q=title:富士山&wt=json&indent=true"
-
-# AND検索
-curl "http://localhost:8983/solr/my_core/select?q=東京%20AND%20人口&wt=json&indent=true"
-```
-
-#### 結果の絞り込み
+## 検索評価実行
+### コア作成・削除
 
 ```bash
-# 件数指定
-curl "http://localhost:8983/solr/my_core/select?q=日本&rows=5"
-
-# フィールド指定
-curl "http://localhost:8983/solr/my_core/select?q=日本&fl=id,title"
-
-# ページネーション
-curl "http://localhost:8983/solr/my_core/select?q=日本&rows=10&start=20"
+scripts/create_solr_core.sh ${CORE_NAME} ${SCHEMA_FILE}
 ```
-
-### Javaクライアントでの検索
 
 ```bash
-# Javaコンテナに入る
-docker exec -it java bash
-cd /app/java
-
-# コンパイル（初回のみ）
-mvn clean compile
-
-# キーワード検索
-mvn exec:java -Dexec.mainClass="KeywordSearch" \
-  -Dexec.args="my_core '東京の人口'"
-
-# ベクトル検索（埋め込みベクトルが必要）
-mvn exec:java -Dexec.mainClass="EmbedSearch" \
-  -Dexec.args="my_core '日本の首都はどこですか'"
-
-# ハイブリッド検索
-mvn exec:java -Dexec.mainClass="HybridSearch" \
-  -Dexec.args="my_core '東京オリンピック'"
-
-exit
+scripts/delete_solr_core.sh ${CORE_NAME}
 ```
 
-### 検索の高度なオプション
 
-#### ハイライト
+### データ投入
+
+java/src/main/java/DataInputSolr.javaに以下のパラメータを設定する。
+
+- DEFAULT_INPUT_FILES：投入データファイルパス（jsonのみ、スキーマに準じ「id、title、context、question」フィールド必須）
+- OUTPUT_DIR：作成ベクトル保存フォルダ
+- PARENT_DOCS_DIR：親ドキュメントベクトル保存フォルダ
+- CORE_NAME：対象コアの名前
+- CHUNK_SIZE：チャンクサイズ
+- BATCH_SIZE：データ投入バッチサイズ
+- CHUNK_MODE：テキスト分割選択（fixed=固定文字数、section=セクション）
+- MODE：データ作成選択（batch=前データ投入、parent=チャンキングなしの親ドキュメントのみ投入）
+- OVERLAP_SECTIONS：前後に結合するセクション数（0=前後結合なし、n=前後nセクションずつ結合）
+- MIN_CHUNK_SIZE：最小チャンクサイズ
+- SECTION_SEPARATOR：チャンキングのセパレーター
+
+以下のコマンドを実行
 
 ```bash
-curl "http://localhost:8983/solr/my_core/select?q=日本&hl=true&hl.fl=text"
+make inputdata
 ```
 
-#### ファセット検索
+### 検索実行
+
+java/src/main/java/Config.javaに以下のパラメータを設定する。
+
+- coreName：対象コアの名前
+- numRows：検索対象データ数制限
+- topk：検索結果の上位k件を保持する
+- keywordTargetField：キーワード検索の対象フィールド
+- isChunk：検索対象をチャンキングデータとするか
+- embeddingTargetField：ベクトル検索対象フィールド
+- modelName：埋め込み生成モデルの名前
+- targetFields：検索結果に含めるフィールド群
+- partOfSpeech：キーワードクエリに使用する品詞群
+- choiceWordNumFromTop：分ち書きされた単語群からキーワード検索に使用する単語数
+- paraphraseWordNumFromTop：単語言い換え単語数
+- fieldSearchMethodType：フィールド検索タイプ指定（OR、AND）
+- resultsFolderName：検索結果保存フォルダ名
+- groudTruthJsonPath：検索クエリが含まれるjsonファイルパス（questionフィールドにクエリを配置）
+- useOriginalQuery：クエリを分ち書きするか
+- queryPartOfSpeech：分ち書きする時に使用する品詞
+- seasrchTypes：検索タイプ指定（keyword、embedding、hybrid複数指定可）
+
+以下のコマンドを実行
 
 ```bash
-curl "http://localhost:8983/solr/my_core/select?q=*:*&facet=true&facet.field=title"
+make run
 ```
 
-#### スコアのデバッグ
+### 検索結果確認
 
-```bash
-curl "http://localhost:8983/solr/my_core/select?q=日本&debug=true"
-```
+検索結果はResult/searchType/resultsFolderNameに保存され以下の３つのjsonファイルが作成される。
 
-## データ管理
-
-### データの更新
-
-```bash
-# 部分更新
-curl -X POST -H "Content-Type: application/json" \
-  "http://localhost:8983/solr/my_core/update?commit=true" \
-  -d '[{"id":"doc001","title":{"set":"新しいタイトル"}}]'
-```
-
-### データの削除
-
-```bash
-# IDで削除
-curl -X POST -H "Content-Type: application/json" \
-  "http://localhost:8983/solr/my_core/update?commit=true" \
-  -d '{"delete":{"id":"doc001"}}'
-
-# クエリで一括削除
-curl -X POST -H "Content-Type: application/json" \
-  "http://localhost:8983/solr/my_core/update?commit=true" \
-  -d '{"delete":{"query":"title:テスト"}}'
-```
-
-### コアの削除
-
-```bash
-./scripts/delete_solr_core.sh my_core
-```
-
-## スキーマ管理
-
-### スキーマの確認
-
-```bash
-# スキーマ全体
-curl "http://localhost:8983/solr/my_core/schema"
-
-# フィールド一覧
-curl "http://localhost:8983/solr/my_core/schema/fields"
-```
-
-### フィールドの追加
-
-```bash
-# テキストフィールド
-curl -X POST -H 'Content-Type: application/json' \
-  "http://localhost:8983/solr/my_core/schema" \
-  -d '{
-    "add-field": {
-      "name": "author",
-      "type": "text_ja",
-      "stored": true,
-      "indexed": true
-    }
-  }'
-
-# ベクトルフィールド
-curl -X POST -H 'Content-Type: application/json' \
-  "http://localhost:8983/solr/my_core/schema" \
-  -d '{
-    "add-field": {
-      "name": "text_vector",
-      "type": "knn_vector",
-      "stored": true,
-      "indexed": true
-    }
-  }'
-```
+- results.json：各クエリに対する検索結果が全て含まれる
+- status.json：正解・不正解したデータのIDが含まれる
+- summary.json：configのパラメータと検索評価精度が含まれる
 
 ## プロジェクト構成
 
@@ -308,8 +148,8 @@ solr-dev/
 | `make logs` | ログを表示 |
 | `make cores` | Solrコアの一覧を表示 |
 | `make search Q=<query>` | 検索を実行 |
-| `make core-create CORE_NAME=<name>` | コアを作成 |
-| `make core-delete CORE_NAME=<name>` | コアを削除 |
 | `make java-shell` | Javaコンテナに入る |
 | `make python-shell` | Pythonコンテナに入る |
 | `make clean` | すべて削除 |
+| `make inputdasta` | データ投入 |
+| `make run` | 検索評価実行 |

@@ -10,7 +10,6 @@ public class Config {
     private String[] partOfSpeech;
     private int choiceWordNumFromTop;
     // TF-IDFランキングから上位N個の単語を取得する設定（>0でTF-IDF使用、0で従来の分かち書き使用）
-    private int rankChoiceWordNumFromTop;
     private int paraphraseWordNumFromTop;
     private String fieldSearchMethodType;
     // チャンクドキュメントを検索対象にするかどうか
@@ -28,7 +27,7 @@ public class Config {
 
     public Config() {
         // デフォルト値の設定
-        this.coreName = "production_split-1000";
+        this.coreName = "test_core";
         // this.type は Main.java のループ内で searchTypes から設定される
         this.numRows = 10000;
         this.topk = 10;
@@ -39,10 +38,9 @@ public class Config {
         this.targetFields = new String[]{"id", "original_doc_id", "title", "context", "score"};
         this.partOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
         this.choiceWordNumFromTop = 1000;
-        this.rankChoiceWordNumFromTop = 3; // 0以下なら無効（従来の分かち書き使用）
         this.paraphraseWordNumFromTop = 3; // パラフレーズ無効（TF-IDF単語のみ使用）
         this.fieldSearchMethodType = "OR";
-        this.resultFolderName = "word_chunk1000_rephrase"; // デフォルトの結果フォルダ名
+        this.resultFolderName = "test"; // デフォルトの結果フォルダ名
         this.groundTruthJsonPath = "data/jaquad_validation_3939.json";
         this.useOriginalQuery = false; // デフォルトは分かち書き
         this.queryPartOfSpeech = new String[]{"名詞", "動詞", "形容詞"};
@@ -79,9 +77,6 @@ public class Config {
 
     public int getChoiceWordNumFromTop() { return choiceWordNumFromTop; }
     public void setChoiceWordNumFromTop(int choiceWordNumFromTop) { this.choiceWordNumFromTop = choiceWordNumFromTop; }
-
-    public int getRankChoiceWordNumFromTop() { return rankChoiceWordNumFromTop; }
-    public void setRankChoiceWordNumFromTop(int rankChoiceWordNumFromTop) { this.rankChoiceWordNumFromTop = rankChoiceWordNumFromTop; }
 
     public int getParaphraseWordNumFromTop() { return paraphraseWordNumFromTop; }
     public void setParaphraseWordNumFromTop(int paraphraseWordNumFromTop) { this.paraphraseWordNumFromTop = paraphraseWordNumFromTop; }

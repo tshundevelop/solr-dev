@@ -26,11 +26,9 @@ import java.util.concurrent.Future;
 /**
  * JaQuADデータをSolr用に変換し、OpenAI APIでベクトル化してSolrに投入する
  */
-public class JaQuADToSolr {
+public class DataInputSolr {
     
     private static final List<String> DEFAULT_INPUT_FILES = Arrays.asList(
-        // "data/jaquad/processed/jaquad_validation_50.json",
-        // "data/wikipedia_ja/processed/wikipedia_ja_validation_50.json"
         "data/jaquad/processed/jaquad_production_792.json",
         "data/wikipedia_ja/processed/wikipedia_ja_production_9932.json"
     );
@@ -43,6 +41,9 @@ public class JaQuADToSolr {
     
     // チャンキングモード: "fixed" = 固定文字数、"section" = セクション区切り
     private static final String CHUNK_MODE = "section";  // "fixed" or "section"
+
+    // モード選択: "batch" = バッチ処理モード、"parent" = 親ドキュメント生成モード
+    private static final String MODE = "batch";  // "batch" or "parent"
     
     // セクションモード用: 前後に結合するセクション数（0=オーバーラップなし、1=前後1セクションずつ）
     private static final int OVERLAP_SECTIONS = 4;
@@ -56,7 +57,7 @@ public class JaQuADToSolr {
     private final ObjectMapper objectMapper;
     private final String apiKey;
     
-    public JaQuADToSolr(String apiKey) {
+    public DataInputSolr(String apiKey) {
         this.objectMapper = new ObjectMapper();
         this.apiKey = apiKey;
     }
@@ -75,14 +76,13 @@ public class JaQuADToSolr {
             System.exit(1);
         }
         
-        JaQuADToSolr converter = new JaQuADToSolr(apiKey);
+        DataInputSolr converter = new DataInputSolr(apiKey);
 
         List<String> inputFiles = args.length > 0 ? Arrays.asList(args) : DEFAULT_INPUT_FILES;
         List<Path> inputPaths = converter.resolveInputPaths(inputFiles);
         
         // モード選択: 環境変数 MODE で制御
-        // batch or parent
-        String mode = System.getProperty("MODE", "batch");  // デフォルトをparentに変更
+        String mode = System.getProperty("MODE", MODE);
         
         if ("parent".equals(mode)) {
             // モード1: 親ドキュメントのみ生成して保存
