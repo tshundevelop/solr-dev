@@ -498,3 +498,5 @@ todo
 make_data_prog/
 data/jaquad/
 data/wikipedia_ja/
+data/test_wikipedia/
+data/test_jaquad/

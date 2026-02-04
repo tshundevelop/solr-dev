@@ -36,19 +36,14 @@ cleanup() {
     local exit_code=$?
     echo ""
     echo "================================================"
-    log_info "クリーンアップを実行中..."
+    log_info "テスト終了"
     echo "================================================"
     echo ""
     
-    # Dockerを停止
-    log_info "Dockerコンテナを停止中..."
-    docker compose down 2>/dev/null || true
-    
-    echo ""
     if [ $exit_code -ne 0 ]; then
         log_error "テストが失敗しました（終了コード: $exit_code）"
     else
-        log_success "クリーンアップ完了"
+        log_success "テスト完了（コンテナは起動したままです）"
     fi
     
     exit $exit_code
@@ -65,15 +60,17 @@ echo ""
 SOLR_URL="http://localhost:8983"
 CORE_NAME="test_core"
 SCHEMA_FILE="data/schema/schema.json"
-SAMPLE_DATA="data/sample_data.json"
+SAMPLE_DATA="data/test_wikipedia/processed/test_wikipedia_production_10.json"
 
-# ===== 1. Dockerのビルドと起動 =====
-log_info "【1/10】Dockerのビルドと起動"
-log_info "既存のコンテナを停止..."
-docker compose down 2>/dev/null || true
-log_info "コンテナをビルドして起動..."
-docker compose up -d --build
-log_success "Dockerコンテナを起動しました"
+# ===== 1. Dockerコンテナの確認と起動 =====
+log_info "【1/10】Dockerコンテナの確認と起動"
+if docker ps | grep -q "python\|java\|solr"; then
+    log_success "Dockerコンテナは既に起動しています"
+else
+    log_info "コンテナを起動中..."
+    docker compose up -d
+    log_success "Dockerコンテナを起動しました"
+fi
 echo ""
 
 # ===== 2. Solrの起動確認 =====
@@ -95,16 +92,43 @@ if [ ! -f "$SCHEMA_FILE" ]; then
     exit 1
 fi
 
-# コアの存在確認
-core_status=$(curl -s "${SOLR_URL}/solr/admin/cores?action=STATUS&core=${CORE_NAME}" || echo "")
-if echo "${core_status}" | grep -q "\"name\":\"${CORE_NAME}\""; then
-    log_success "コア '${CORE_NAME}' は既に存在します（スキップ）"
+# サンプルデータのダウンロード
+log_info "サンプルデータをダウンロード中..."
+if [ ! -f "$SAMPLE_DATA" ]; then
+    log_info "  Wikipedia日本語データセット（10件）をダウンロード..."
+    docker exec python python /app/python/download_and_process.py \
+        --dataset "range3/wikipedia-ja-20230101" \
+        --split "train" \
+        --name "test_wikipedia" \
+        --id-field "id" \
+        --title-field "title" \
+        --context-field "text" \
+        --max-records 10
+    
+    if [ -f "$SAMPLE_DATA" ]; then
+        log_success "  サンプルデータをダウンロードしました"
+    else
+        log_error "  サンプルデータのダウンロードに失敗しました"
+        exit 1
+    fi
 else
-    log_info "コア '${CORE_NAME}' を作成中..."
-    chmod +x scripts/create_solr_core.sh scripts/delete_solr_core.sh 2>/dev/null || true
-    ./scripts/create_solr_core.sh "${CORE_NAME}" "${SCHEMA_FILE}"
-    log_success "コアを作成しました"
+    log_success "  サンプルデータは既に存在します（スキップ）"
 fi
+
+# コアの存在確認と削除・再作成
+core_status=$(curl -s "${SOLR_URL}/solr/admin/cores?action=STATUS&core=${CORE_NAME}" || echo "")
+chmod +x scripts/create_solr_core.sh scripts/delete_solr_core.sh 2>/dev/null || true
+
+if echo "${core_status}" | grep -q "\"name\":\"${CORE_NAME}\""; then
+    log_info "コア '${CORE_NAME}' が存在するため削除中..."
+    ./scripts/delete_solr_core.sh "${CORE_NAME}" 2>/dev/null || true
+    sleep 2
+    log_success "既存のコアを削除しました"
+fi
+
+log_info "コア '${CORE_NAME}' を作成中..."
+./scripts/create_solr_core.sh "${CORE_NAME}" "${SCHEMA_FILE}"
+log_success "コアを作成しました"
 echo ""
 
 # ===== 4. サンプルデータの投入 =====
@@ -114,9 +138,14 @@ if [ ! -f "$SAMPLE_DATA" ]; then
     exit 1
 fi
 
-curl -X POST -H "Content-Type: application/json" \
-    "${SOLR_URL}/solr/${CORE_NAME}/update?commit=true" \
-    --data-binary "@${SAMPLE_DATA}" > /dev/null 2>&1
+log_info "  DataInputSolr.javaでデータを投入中..."
+DATA_INPUT_RESULT=$(docker exec java bash -c "cd /app/java && mvn -q exec:java -Dexec.mainClass='DataInputSolr' -Dexec.args='/app/${SAMPLE_DATA} ${CORE_NAME}' 2>&1" || echo "ERROR")
+
+if echo "$DATA_INPUT_RESULT" | grep -q "ERROR"; then
+    log_error "データ投入に失敗しました"
+    echo "$DATA_INPUT_RESULT"
+    exit 1
+fi
 
 sleep 2
 DOC_COUNT=$(curl -s "${SOLR_URL}/solr/${CORE_NAME}/select?q=*:*&rows=0" | \
@@ -125,7 +154,7 @@ DOC_COUNT=$(curl -s "${SOLR_URL}/solr/${CORE_NAME}/select?q=*:*&rows=0" | \
 if [ "$DOC_COUNT" -gt 0 ]; then
     log_success "サンプルデータを投入しました（${DOC_COUNT}件）"
 else
-    log_error "データ投入に失敗しました"
+    log_error "データ投入に失敗しました（投入後のドキュメント数: ${DOC_COUNT}）"
     exit 1
 fi
 echo ""
@@ -158,19 +187,22 @@ else
     exit 1
 fi
 
-log_info "  テスト2: フィールド指定検索（title:手塚）"
-FIELD_RESULT=$(curl -s "${SOLR_URL}/solr/${CORE_NAME}/select" --data-urlencode "q=title:手塚")
-if echo "$FIELD_RESULT" | grep -q '手塚'; then
-    log_success "  フィールド検索が成功"
+log_info "  テスト2: フィールド指定検索（context:コケ植物）"
+FIELD_RESULT=$(curl -s "${SOLR_URL}/solr/${CORE_NAME}/select" --data-urlencode "q=context:コケ植物")
+FIELD_COUNT=$(echo "$FIELD_RESULT" | grep -o '"numFound":[0-9]*' | grep -o '[0-9]*' || echo "0")
+if [ "$FIELD_COUNT" -gt 0 ]; then
+    log_success "  フィールド検索が成功（${FIELD_COUNT}件）"
 else
-    log_warning "  フィールド検索に失敗"
+    log_warning "  フィールド検索結果が0件（データに対象フィールドが存在しない可能性）"
 fi
 
 log_info "  テスト3: Javaクライアントでのキーワード検索"
 if docker exec java test -f /app/java/pom.xml; then
     JAVA_SEARCH=$(docker exec java bash -c "cd /app/java && mvn -q exec:java -Dexec.mainClass='KeywordSearch' -Dexec.args='${CORE_NAME} 日本' 2>&1" || echo "ERROR")
     
-    if echo "$JAVA_SEARCH" | grep -q -E "Results" && ! echo "$JAVA_SEARCH" | grep -q "ERROR"; then
+    if echo "$JAVA_SEARCH" | grep -q "No results found"; then
+        log_warning "  Javaクライアント検索結果が0件"
+    elif echo "$JAVA_SEARCH" | grep -q -E "Results" && ! echo "$JAVA_SEARCH" | grep -q "ERROR"; then
         log_success "  Javaクライアント検索が成功"
     else
         log_warning "  Javaクライアント検索をスキップ（KeywordSearch.javaを確認してください）"
@@ -187,9 +219,11 @@ if [ "${SKIP_VECTOR_SEARCH:-false}" = "true" ]; then
 else
     log_info "  ベクトル検索を実行中..."
     
-    VECTOR_SEARCH=$(docker exec java bash -c "cd /app/java && timeout 30 mvn -q exec:java -Dexec.mainClass='EmbedSearch' -Dexec.args='${CORE_NAME} 日本の首都' 2>&1" || echo "ERROR")
+    VECTOR_SEARCH=$(docker exec java bash -c "cd /app/java && timeout 30 mvn -q exec:java -Dexec.mainClass='EmbedSearch' -Dexec.args='${CORE_NAME} 東京' 2>&1" || echo "ERROR")
     
-    if echo "$VECTOR_SEARCH" | grep -q -E "Results" && ! echo "$VECTOR_SEARCH" | grep -q "ERROR"; then
+    if echo "$VECTOR_SEARCH" | grep -q "No results found"; then
+        log_warning "  ベクトル検索結果が0件（データに埋め込みベクトルがない可能性）"
+    elif echo "$VECTOR_SEARCH" | grep -q -E "Results" && ! echo "$VECTOR_SEARCH" | grep -q "ERROR"; then
         log_success "  ベクトル検索が成功"
     else
         log_warning "  ベクトル検索に失敗またはタイムアウト"
@@ -207,7 +241,9 @@ else
     
     HYBRID_SEARCH=$(docker exec java bash -c "cd /app/java && timeout 30 mvn -q exec:java -Dexec.mainClass='HybridSearch' -Dexec.args='${CORE_NAME} 東京' 2>&1" || echo "ERROR")
     
-    if echo "$HYBRID_SEARCH" | grep -q -E "Results" && ! echo "$HYBRID_SEARCH" | grep -q "ERROR"; then
+    if echo "$HYBRID_SEARCH" | grep -q "No results found"; then
+        log_warning "  ハイブリッド検索結果が0件（データに埋め込みベクトルがない可能性）"
+    elif echo "$HYBRID_SEARCH" | grep -q -E "Results" && ! echo "$HYBRID_SEARCH" | grep -q "ERROR"; then
         log_success "  ハイブリッド検索が成功"
     else
         log_warning "  ハイブリッド検索に失敗またはタイムアウト"

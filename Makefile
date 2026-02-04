@@ -34,6 +34,10 @@ help:
 	@echo "  make inputdata   - データをSolrに投入"
 	@echo "  make run         - メイン処理を実行"
 	@echo ""
+	@echo "データセット取得:"
+	@echo "  make dataset     - Hugging Faceデータセットを取得・処理"
+	@echo "                     DATASET=<name> NAME=<short> ID=<field> TITLE=<field> CONTEXT=<field>"
+	@echo ""
 
 up:
 	@echo "コンテナを起動しています..."
@@ -97,3 +101,36 @@ inputdata:
 
 run:
 	@docker exec java bash -c "mvn exec:java -Dexec.mainClass=\"Main\""
+
+# データセット取得と処理
+DATASET ?= rajpurkar/squad
+SPLIT ?= train
+NAME ?= squad
+ID_FIELD ?= id
+TITLE_FIELD ?= title
+CONTEXT_FIELD ?= context
+ID_PREFIX ?= 
+SUBSET ?= 
+MAX_RECORDS ?= 
+
+dataset:
+	@echo "====================================="
+	@echo "  データセット取得・処理"
+	@echo "====================================="
+	@echo "Dataset: $(DATASET)"
+	@echo "Split: $(SPLIT)"
+	@echo "Name: $(NAME)"
+	@echo "ID field: $(ID_FIELD)"
+	@echo "Title field: $(TITLE_FIELD)"
+	@echo "Context field: $(CONTEXT_FIELD)"
+	@echo "====================================="
+	@docker exec python python /app/python/download_and_process.py \
+		--dataset "$(DATASET)" \
+		--split "$(SPLIT)" \
+		--name "$(NAME)" \
+		--id-field "$(ID_FIELD)" \
+		--title-field "$(TITLE_FIELD)" \
+		--context-field "$(CONTEXT_FIELD)" \
+		$(if $(ID_PREFIX),--id-prefix "$(ID_PREFIX)",) \
+		$(if $(SUBSET),--subset "$(SUBSET)",) \
+		$(if $(MAX_RECORDS),--max-records $(MAX_RECORDS),)

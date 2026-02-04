@@ -36,11 +36,11 @@ public class DataInputSolr {
     private static final String PARENT_DOCS_DIR = "data/embedding/parent_docs";  // 親ドキュメント保存先
     private static final String SOLR_URL = "http://solr:8983/solr";
     private static final String CORE_NAME = "test_core";  // 任意のコア名を指定
-    private static final int CHUNK_SIZE = 1000;  // チャンキングする文字数（０の場合はチャンキングしない、fixedモード用）
+    private static final int CHUNK_SIZE = 3000;  // チャンキングする文字数（０の場合はチャンキングしない、fixedモード用）
     private static final int BATCH_SIZE = 100;  // バッチサイズ（この件数ごとにSolrに送信）
     
     // チャンキングモード: "fixed" = 固定文字数、"section" = セクション区切り
-    private static final String CHUNK_MODE = "section";  // "fixed" or "section"
+    private static final String CHUNK_MODE = "fixed";  // "fixed" or "section"
 
     // モード選択: "batch" = バッチ処理モード、"parent" = 親ドキュメント生成モード
     private static final String MODE = "batch";  // "batch" or "parent"
@@ -76,9 +76,29 @@ public class DataInputSolr {
             System.exit(1);
         }
         
+        // 引数処理: args[0]=ファイルパス, args[1]=コア名（オプション）
+        String coreName = CORE_NAME;
+        List<String> inputFiles;
+        
+        if (args.length >= 2) {
+            // 引数2つ: ファイルパスとコア名
+            inputFiles = Arrays.asList(args[0]);
+            coreName = args[1];
+            System.out.println("Using specified file: " + args[0]);
+            System.out.println("Using specified core: " + coreName);
+        } else if (args.length == 1) {
+            // 引数1つ: ファイルパスのみ（コア名はデフォルト）
+            inputFiles = Arrays.asList(args[0]);
+            System.out.println("Using specified file: " + args[0]);
+            System.out.println("Using default core: " + coreName);
+        } else {
+            // 引数なし: デフォルト
+            inputFiles = DEFAULT_INPUT_FILES;
+            System.out.println("Using default files and core");
+        }
+        
         DataInputSolr converter = new DataInputSolr(apiKey);
 
-        List<String> inputFiles = args.length > 0 ? Arrays.asList(args) : DEFAULT_INPUT_FILES;
         List<Path> inputPaths = converter.resolveInputPaths(inputFiles);
         
         // モード選択: 環境変数 MODE で制御
@@ -93,12 +113,13 @@ public class DataInputSolr {
             // モード2: バッチ処理モード (親ドキュメント読み込み + チャンク生成 + Solr投入)
             System.out.println("\n=== Batch Processing Mode ===");
             System.out.println("Batch size: " + BATCH_SIZE + " documents per commit");
+            System.out.println("Core name: " + coreName);
             System.out.println("Loading data from " + inputPaths.size() + " file(s):");
             for (Path path : inputPaths) {
                 System.out.println("  - " + path.toAbsolutePath());
             }
             
-            converter.processBatchMode(inputPaths, CORE_NAME);
+            converter.processBatchMode(inputPaths, coreName);
         }
         System.out.println("\n=== All Processing Complete! ===");
     }

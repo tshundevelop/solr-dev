@@ -7,3 +7,6 @@ scipy
 mecab-python3
 unidic-lite
 pyemd
+datasets
+tqdm
+huggingface_hub

@@ -19,7 +19,6 @@ java/api_key.envを作成しOPENAI_API_KEYにAPIキーを設定する
 ./test_setup.sh
 
 make test
-make help
 ```
 
 このスクリプトは以下を自動実行：
@@ -52,6 +51,50 @@ scripts/create_solr_core.sh ${CORE_NAME} ${SCHEMA_FILE}
 scripts/delete_solr_core.sh ${CORE_NAME}
 ```
 
+### データダウンロード
+
+Hugging Face上のデータセットをダウンロードする。
+Hugging Face：https://huggingface.co
+
+```bash
+make dataset DATASET="<dataset_name>" NAME="<short_name>" \
+  ID_FIELD="<id_field>" TITLE_FIELD="<title_field>" CONTEXT_FIELD="<context_field>"
+```
+
+dataset_nameにはHugging Faceで使用するデータセットの名前（パス）が入る
+以下のデータセットなら、DATASET="range3/wikipedia-ja-20230101"
+https://huggingface.co/datasets/range3/wikipedia-ja-20230101
+
+#### パラメータ
+
+| パラメータ | 説明 | デフォルト |
+|-----------|------|----------|
+| `DATASET` | Hugging Faceのデータセット名 | SkelterLabsInc/JaQuAD |
+| `SPLIT` | データセットのsplit（train/validation等） | train |
+| `NAME` | 短縮名（フォルダ名・ファイル名用） | squad |
+| `ID_FIELD` | IDフィールド名（`_generated_`で自動生成） | id |
+| `TITLE_FIELD` | タイトルフィールド名 | title |
+| `CONTEXT_FIELD` | コンテキストフィールド名 | context |
+| `MAX_RECORDS` | 取得する最大レコード数（省略時は全件） | - |
+
+#### 出力
+
+- **RAWデータ**: `data/<NAME>/<NAME>_<SPLIT>_raw.json`
+- **処理済みデータ**: `data/<NAME>/processed/<NAME>_production_XXXX.json`
+
+処理済みデータは`id`, `title`, `context`の3フィールドに統一される。
+
+#### 例
+
+```bash
+# Wikipedia日本語データセット（1000件）
+make dataset DATASET="range3/wikipedia-ja-20230101" NAME="wikipedia" \
+  ID_FIELD="id" TITLE_FIELD="title" CONTEXT_FIELD="text" MAX_RECORDS=1000
+
+# JaQuADデータセット（全件）
+make dataset DATASET="SkelterLabsInc/JaQuAD" NAME="jaquad" \
+  ID_FIELD="id" TITLE_FIELD="title" CONTEXT_FIELD="context"
+```
 
 ### データ投入
 
@@ -208,8 +251,9 @@ solr-dev/
 | `make java-shell` | Javaコンテナに入る |
 | `make python-shell` | Pythonコンテナに入る |
 | `make clean` | すべて削除 |
-| `make inputdasta` | データ投入 |
+| `make inputdata` | データ投入 |
 | `make run` | 検索評価実行 |
+| `make dataset` | Hugging Faceデータセット取得・処理 |
 
 ## パワーポイント資料
 https://kensukedreamartsco.sharepoint.com/:p:/r/sites/DA114/Shared%20Documents/%E4%B8%80%E8%88%AC/%E8%B3%87%E6%96%99/%E3%83%86%E3%82%B9%E3%83%88.pptx?d=w1a9e71d067f04e7bbba6d7474f93772b&csf=1&web=1&e=22ZfVe
