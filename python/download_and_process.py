@@ -10,6 +10,7 @@ from typing import Optional, Any, Dict
 from tqdm import tqdm
 from datasets import load_dataset
 from huggingface_hub import list_repo_files, hf_hub_download
+from collections import defaultdict
 
 
 def find_nested_field(data: Any, field_name: str) -> Any:
@@ -53,6 +54,110 @@ def extract_field_value(record: Dict, field_name: str, default: str = "") -> str
         return str(value)
     
     return default
+
+
+def process_jaquad_merging(raw_data):
+    """
+    JaQuAD専用処理: IDの左3桁でグループ化してcontextを結合
+    ID形式: tr-000-00-000 の左3桁が同じものはcontextを結合
+    引数: フラット化されたprocessed_data（id, title, context フィールドを持つ辞書のリスト）
+    """
+    print("\n=== JaQuAD Special Processing ===")
+    print("Grouping by ID prefix and merging contexts...")
+    
+    # IDの左3桁でグループ化
+    grouped = defaultdict(list)
+    
+    for record in raw_data:
+        record_id = record.get("id", "")
+        if not record_id:
+            continue
+            
+        # IDから左3桁を取得 (例: "tr-000-00-000" -> "tr-000")
+        id_parts = record_id.split("-")
+        if len(id_parts) >= 2:
+            prefix = f"{id_parts[0]}-{id_parts[1]}"  # "tr-000" または "de-000"
+        else:
+            prefix = record_id
+        
+        grouped[prefix].append(record)
+    
+    print(f"  Grouped into {len(grouped)} groups from {len(raw_data)} records")
+    
+    # グループごとにcontextを結合
+    merged_data = []
+    total_original_contexts = 0
+    total_unique_contexts = 0
+    
+    for prefix, records in tqdm(grouped.items(), desc="Merging"):
+        # recordsを元のIDでソート
+        records_sorted = sorted(records, key=lambda x: x.get("id", ""))
+        
+        # 最初のレコードをベースにする
+        base_record = records_sorted[0].copy()
+        
+        # 統計用
+        original_count = len(records_sorted)
+        total_original_contexts += original_count
+        
+        # contextを重複排除して結合
+        unique_contexts = []
+        seen_contexts = set()
+        
+        for r in records_sorted:
+            context = r.get("context", "").strip()
+            if not context:
+                continue
+                
+            # 完全一致チェック
+            if context in seen_contexts:
+                continue
+            
+            # 部分重複チェック
+            is_duplicate = False
+            for existing_context in seen_contexts:
+                # 新しいcontextが既存の中に完全に含まれている場合はスキップ
+                if context in existing_context:
+                    is_duplicate = True
+                    break
+                # 既存のcontextが新しいcontextに完全に含まれている場合は既存を削除
+                elif existing_context in context:
+                    unique_contexts = [c for c in unique_contexts if c != existing_context]
+                    seen_contexts.remove(existing_context)
+                    break
+            
+            if not is_duplicate:
+                unique_contexts.append(context)
+                seen_contexts.add(context)
+        
+        # 重複排除されたcontextを改行で結合
+        merged_context = "\n".join(unique_contexts)
+        
+        # マージされたレコードを作成
+        merged_record = {
+            "id": prefix,
+            "title": base_record.get("title", ""),
+            "context": merged_context
+        }
+        
+        # 統計更新
+        unique_count = len(unique_contexts)
+        total_unique_contexts += unique_count
+        
+        merged_data.append(merged_record)
+    
+    # 統計表示
+    duplicate_count = total_original_contexts - total_unique_contexts
+    duplicate_ratio = (duplicate_count / total_original_contexts * 100) if total_original_contexts > 0 else 0
+    print(f"\nJaQuAD Merging Statistics:")
+    print(f"  Original contexts: {total_original_contexts}")
+    print(f"  Unique contexts: {total_unique_contexts}")
+    print(f"  Duplicates removed: {duplicate_count} ({duplicate_ratio:.1f}%)")
+    print(f"  Original records: {len(raw_data)}")
+    print(f"  Merged records: {len(merged_data)}")
+    print(f"  Reduction ratio: {((len(raw_data) - len(merged_data)) / len(raw_data) * 100):.1f}%")
+    
+    return merged_data
 import json
 
 
@@ -158,29 +263,33 @@ def download_and_process_dataset(
                     print(f"  Found {len(json_files)} JSON files in repository")
                     
                     if json_files:
-                        # 最初のJSONファイルをダウンロードして構造を確認
+                        # 全JSONファイルをダウンロード
                         raw_data_list = []
-                        for json_file in json_files[:5]:  # 最大5ファイルまで
+                        for json_file in json_files:
                             print(f"  Downloading: {json_file}")
-                            file_path = hf_hub_download(
-                                repo_id=dataset_name,
-                                filename=json_file,
-                                repo_type="dataset"
-                            )
-                            
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                file_content = json.load(f)
-                                # JaQuAD形式の場合、dataキーの中身を展開
-                                if isinstance(file_content, dict) and 'data' in file_content:
-                                    raw_data_list.extend(file_content['data'])
-                                elif isinstance(file_content, list):
-                                    raw_data_list.extend(file_content)
-                                else:
-                                    raw_data_list.append(file_content)
+                            try:
+                                file_path = hf_hub_download(
+                                    repo_id=dataset_name,
+                                    filename=json_file,
+                                    repo_type="dataset"
+                                )
+                                
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    file_content = json.load(f)
+                                    # JaQuAD形式の場合、dataキーの中身を展開
+                                    if isinstance(file_content, dict) and 'data' in file_content:
+                                        raw_data_list.extend(file_content['data'])
+                                    elif isinstance(file_content, list):
+                                        raw_data_list.extend(file_content)
+                                    else:
+                                        raw_data_list.append(file_content)
+                            except Exception as file_error:
+                                print(f"  ⚠ Failed to download {json_file}: {str(file_error)[:100]}")
+                                continue
                         
                         # 辞書のリストに変換（datasets形式に合わせる）
                         dataset = raw_data_list
-                        print(f"✓ Downloaded {len(dataset)} records from direct JSON download")
+                        print(f"✓ Downloaded {len(dataset)} records from {len(json_files)} JSON files")
                     else:
                         raise Exception("No JSON files found in repository")
                         
@@ -232,6 +341,36 @@ def download_and_process_dataset(
         json.dump(raw_data, f, ensure_ascii=False, indent=2)
     print(f"✓ Saved {len(raw_data)} records")
     
+    # JaQuAD専用処理: article + paragraphs + qas 構造をフラット化
+    if "jaquad" in dataset_name.lower():
+        print("\n[JaQuAD] Flattening nested structure (article → paragraphs → QA pairs)...")
+        flattened_data = []
+        for article in tqdm(raw_data, desc="Flattening"):
+            title = article.get("title", "")
+            paragraphs = article.get("paragraphs", [])
+            
+            for paragraph in paragraphs:
+                context = paragraph.get("context", "")
+                qas = paragraph.get("qas", [])
+                
+                for qa in qas:
+                    flattened_record = {
+                        "id": qa.get("id", ""),
+                        "title": title,
+                        "context": context,
+                        "question": qa.get("question", ""),
+                        "answers": qa.get("answers", [])
+                    }
+                    flattened_data.append(flattened_record)
+        
+        raw_data = flattened_data
+        print(f"✓ Flattened to {len(raw_data)} QA pair records")
+        
+        # MAX_RECORDS制限を適用（フラット化後）
+        if max_records and len(raw_data) > max_records:
+            print(f"Limiting to {max_records} records (flattened: {len(raw_data)})")
+            raw_data = raw_data[:max_records]
+    
     # 利用可能なフィールドを表示
     if raw_data:
         print("\nAvailable fields in dataset:")
@@ -279,6 +418,7 @@ def download_and_process_dataset(
     
     # Step 3: Process data
     print(f"\n[Step 3/3] Processing data...")
+    
     processed_data = []
     
     # サンプルレコードの構造をデバッグ表示
@@ -319,6 +459,11 @@ def download_and_process_dataset(
         processed_data.append(processed_record)
     
     print(f"✓ Processed {len(processed_data)} records")
+    
+    # JaQuAD専用処理: contextをグループ化して結合（フラット化後に実行）
+    if "jaquad" in dataset_name.lower():
+        print("\nApplying JaQuAD-specific merging...")
+        processed_data = process_jaquad_merging(processed_data)
     
     # 統計情報
     if processed_data:
