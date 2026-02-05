@@ -1,0 +1,54 @@
+{
+    "add-field-type": {
+        "name": "knn_vector",
+        "class": "solr.DenseVectorField",
+        "knnAlgorithm": "hnsw",
+        "vectorDimension": 3072,
+        "similarityFunction": "cosine"
+    },
+    "add-field": [
+        {
+            "name": "is_chunk",
+            "type": "boolean",
+            "stored": true,
+            "indexed": true
+        },
+        {
+            "name": "original_doc_id",
+            "type": "string",
+            "stored": true,
+            "indexed": true
+        },
+        {
+            "name": "title",
+            "type": "text_ja",
+            "stored": true,
+            "indexed": true
+        },
+        {
+            "name": "question",
+            "type": "text_ja",
+            "stored": true,
+            "indexed": true
+        },
+        {
+            "name": "content",
+            "type": "text_ja",
+            "stored": true,
+            "indexed": true,
+            "multiValued": true
+        },
+        {
+            "name": "chunk_vector",
+            "type": "knn_vector",
+            "stored": true,
+            "indexed": true
+        },
+        {
+            "name": "context_vector",
+            "type": "knn_vector",
+            "stored": true,
+            "indexed": true
+        }
+    ]
+}

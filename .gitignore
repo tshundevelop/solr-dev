@@ -485,6 +485,18 @@ $RECYCLE.BIN/
 
 # User-detemined files
 memo.txt
-*.py
+command.txt
+get_data.py
+make_vector_json.py
 .vscode
-test_vector.json
+java/Result/
+java/*.env
+java/cache/
+java/data/
+java/boff
+todo
+make_data_prog/
+data/jaquad/
+data/wikipedia_ja/
+data/test_wikipedia/
+data/test_jaquad/
