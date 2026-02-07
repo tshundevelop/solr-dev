@@ -97,10 +97,10 @@ clean:
 	@echo "クリーンアップが完了しました"
 
 inputdata:
-	@docker exec java bash -c "mvn exec:java -Dexec.mainClass=\"DataInputSolr\""
+	@docker exec java bash -c "mvn clean compile exec:java -Dexec.mainClass=\"DataInputSolr\""
 
 run:
-	@docker exec java bash -c "mvn exec:java -Dexec.mainClass=\"Main\""
+	@docker exec java bash -c "mvn clean compile exec:java -Dexec.mainClass=\"Main\""
 
 # データセット取得と処理
 DATASET ?= rajpurkar/squad
