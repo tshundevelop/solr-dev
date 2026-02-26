@@ -65,6 +65,9 @@ dataset_nameにはHugging Faceで使用するデータセットの名前（パ�
 以下のデータセットなら、DATASET="range3/wikipedia-ja-20230101"
 https://huggingface.co/datasets/range3/wikipedia-ja-20230101
 
+JaQuAD、DATASET="SkelterLabsInc/JaQuAD"
+https://huggingface.co/datasets/SkelterLabsInc/JaQuAD
+
 #### パラメータ
 
 | パラメータ | 説明 | デフォルト |
